@@ -14,6 +14,8 @@ Download/clone the repository, and install all dependencies listed above.
 From there, simply run 'main.pyw' using pythonw to suppress the command line. The tray icon should appear.
 Double clicking the tray icon will open the main GUI, where all options can be changed.
 
+*Note: You can have the application launch at startup (minimized to tray) by creating a shortcut to main.pyw in your user startup folder.*
+
 ## Arrangement of Mote sticks
 Details to follow...
 
