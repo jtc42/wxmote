@@ -17,7 +17,9 @@ Double clicking the tray icon will open the main GUI, where all options can be c
 *Note: You can have the application launch at startup (minimized to tray) by creating a shortcut to main.pyw in your user startup folder.*
 
 ## Arrangement of Mote sticks
-Details to follow...
+To function properly without modifying the code, fix the Mote sticks to the back of your display as in the diagram
+
+<img src="https://raw.githubusercontent.com/jtc42/wxmote/master/resources/layout.png" width="40%"/>
 
 ## Options
 ### System
