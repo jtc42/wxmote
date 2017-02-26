@@ -667,6 +667,7 @@ class MyFrame(gui.MainFrame): #Instance of MainFrame class from 'gui'
         global userrgb
         userrgb = self.pickerBaseColour.Colour[:3]
         print userrgb
+        save_prefs() #Update preferences file
         
     def onGradChoice(self,e):
         global defaultgradient
@@ -676,6 +677,7 @@ class MyFrame(gui.MainFrame): #Instance of MainFrame class from 'gui'
         updateGradient(gradients[selected][1])
         print "Updating preferences..."
         defaultgradient=selected
+        save_prefs() #Update preferences file
         
     def OnMonitorTempChange(self,e): 
         global monitortemp
@@ -686,6 +688,7 @@ class MyFrame(gui.MainFrame): #Instance of MainFrame class from 'gui'
         else:
             self.menuGradChoice.Enable()
             self.pickerBaseColour.Disable()
+        save_prefs() #Update preferences file
     
     def onTchange(self,e):
         global Tmin
@@ -697,23 +700,28 @@ class MyFrame(gui.MainFrame): #Instance of MainFrame class from 'gui'
         Tmax=self.spinTmax.GetValue()
         n=Tmax-Tmin
         updateGradient(gradients[defaultgradient][1])
+        save_prefs() #Update preferences file
         
     def OnMonitorLoadChange(self,e): 
         global monitorload
         monitorload = self.checkMonitorLoad.IsChecked()
+        save_prefs() #Update preferences file
         
     def onContrastChange(self,e):
         global cntrst
         cntrst = self.sliderContrast.GetValue()/10.0
+        save_prefs() #Update preferences file
     
     def onBrightnessChange(self,e):
         global brtns
         brtns = self.sliderBrightness.GetValue()/100.0
+        save_prefs() #Update preferences file
     
     def onNotebookChange(self,e): #If tab changes
         global mode
         mode=self.notebookMain.GetSelection()
         print mode #Print tab ID
+        save_prefs() #Update preferences file
     
     
     
@@ -733,7 +741,7 @@ class MyFrame(gui.MainFrame): #Instance of MainFrame class from 'gui'
         #This will likely be a global function that cleans up all threads and runs as part of this cleanExit
         #SAVE SETTINGS
         print "Saving preferences..."
-        save_prefs()
+        save_prefs() #Update preferences file
         #STOP THREADS
         workthread.stop()
         workthread.event_finished.wait()
