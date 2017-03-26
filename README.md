@@ -4,8 +4,9 @@ Host-side codebase for AmbiLight based on Pimoroni Mote, for Windows
 A demo of the various modes can be seen [here](https://twitter.com/jtc9242/status/804073090993049602).
 
 ## Requirements
+* Python 3 (should run on Python 2.7, but not tested)
 * [PyWin32](https://pypi.python.org/pypi/pypiwin32)
-* [WxPython](https://wxpython.org/download.php)
+* [WxPython Phoenix](https://wiki.wxpython.org/ProjectPhoenix)
 * [Mote](https://github.com/pimoroni/mote)
 * [Open Hardware Monitor](http://openhardwaremonitor.org/) (Only required for CPU temperature monitoring)
 

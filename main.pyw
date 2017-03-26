@@ -6,6 +6,7 @@ Created on Wed Aug 10 12:05:09 2016
 """
 
 import wx
+from wx import adv
 import threading
 import time
 import numpy as np
@@ -31,7 +32,7 @@ import motecore
 
 
 ###SETTINGS
-VersionID = "Version 170129 - 1800"
+VersionID = "Version 3.20170326.1200"
 
 #System settings
 mode=0 #0=System, 1=Rainbow, 2=Cinema
@@ -76,10 +77,10 @@ def save_prefs():
     pickle.dump([mode, userrgb, monitorload, monitortemp, defaultgradient, Tmin, Tmax, n_avg, col_timeavg, cntrst, brtns, correction], open("prefs.pickle", "wb"))
 
 try:
-    print "Loading preferences..."
+    print("Loading preferences...")
     load_prefs()
 except (OSError, IOError) as e:
-    print "No preferences file found. Creating one..."
+    print("No preferences file found. Creating one...")
     save_prefs()
 
 
@@ -319,7 +320,7 @@ class WorkThread:
     ##THREAD FUNCTIONS
     
     def stop(self): #Stop and clear
-        print "Worker thread (monitor) stop initiated."
+        print("Worker thread (monitor) stop initiated.")
         self._running=False #Set terminate command
 
     def start(self): #Start and draw      
@@ -347,7 +348,7 @@ class WorkThread:
         self.event_finished.clear()
         
         #Monitor startup
-        pythoncom.CoInitialize ()
+        pythoncom.CoInitialize()
         w = wmi.WMI(namespace="root\OpenHardwareMonitor")
         
         while self._running==True: #While terminate command not sent
@@ -366,7 +367,7 @@ class WorkThread:
                 img=getScreen(hwnd)
                 
                 if img.size!=img_init.size: #If resolution has changed
-                    print "Updating resolution"
+                    print("Updating resolution")
                     l_set, t_set, r_set = getCoords(img,led_layout) #Update coordinates
                     img_init = img #Update comparison image
                 
@@ -393,7 +394,7 @@ class WorkThread:
                 
                 
         self.event_finished.set()
-        print "Worker thread (monitor) main loop exited."
+        print("Worker thread (monitor) main loop exited.")
 
 
 
@@ -438,7 +439,7 @@ class DrawThread:
         if rgb!=self.rgb_old: #If colour has changed based on temperature or user
             targetrgb=rgb #Set new colours to be pulse target
             delta=np.subtract(targetrgb,self.rgb_old)
-            print delta
+            print(delta)
             t0=time.time()
             while time.time()-t0<2:
                 scale=(time.time()-t0)/2
@@ -473,7 +474,7 @@ class DrawThread:
     ##THREAD FUNCTIONS    
     
     def stop(self): #Stop and clear
-        print "Worker thread (draw) stop initiated."
+        print("Worker thread (draw) stop initiated.")
         self._running=False #Set terminate command
 
     def start(self): #Start and draw      
@@ -547,7 +548,7 @@ class DrawThread:
                 motecore.mote.show()    
                 
         self.event_finished.set()
-        print "Worker thread (draw) main loop exited."
+        print("Worker thread (draw) main loop exited.")
 
 
 
@@ -562,16 +563,16 @@ class DrawThread:
 TRAY_TOOLTIP = 'Mote Monitor'
 TRAY_ICON = 'icon.png'
 
-class TaskBarIcon(wx.TaskBarIcon):
+class TaskBarIcon(adv.TaskBarIcon):
     ###SETUP###
     def __init__(self, frame):
         self.frame = frame
         super(TaskBarIcon, self).__init__()
         self.set_icon(TRAY_ICON)
-        self.Bind(wx.EVT_TASKBAR_LEFT_DCLICK, self.on_left_dclick)
+        self.Bind(adv.EVT_TASKBAR_LEFT_DCLICK, self.on_left_dclick)
 
     def set_icon(self, path):
-        icon = wx.IconFromBitmap(wx.Bitmap(path))
+        icon = wx.Icon(wx.Bitmap(path))
         self.SetIcon(icon, TRAY_TOOLTIP)
         
         
@@ -598,7 +599,7 @@ class TaskBarIcon(wx.TaskBarIcon):
 
     def on_left_dclick(self, event):
         #UI interaction oneshot commands
-        print 'Tray icon was left-clicked.'
+        print('Tray icon was left-clicked.')
         self.frame.Show(True)
         self.frame.Restore()
 
@@ -629,7 +630,7 @@ class MyFrame(gui.MainFrame): #Instance of MainFrame class from 'gui'
         self.pickerBaseColour.Colour = [userrgb[0],userrgb[1],userrgb[2],255]
         if monitortemp==1:
             self.pickerBaseColour.Disable()
-            print "Static picker disabled"
+            print("Static picker disabled")
             
         #Populate gradient choice options and select default
         self.menuGradChoice.SetItems(gradstrings)
@@ -666,16 +667,16 @@ class MyFrame(gui.MainFrame): #Instance of MainFrame class from 'gui'
     def OnColourChange(self,e): 
         global userrgb
         userrgb = self.pickerBaseColour.Colour[:3]
-        print userrgb
+        print(userrgb)
         save_prefs() #Update preferences file
         
     def onGradChoice(self,e):
         global defaultgradient
-        print "Gradient selected:"
+        print("Gradient selected:")
         selected = self.menuGradChoice.GetSelection()
-        print selected
+        print(selected)
         updateGradient(gradients[selected][1])
-        print "Updating preferences..."
+        print("Updating preferences...")
         defaultgradient=selected
         save_prefs() #Update preferences file
         
@@ -720,7 +721,7 @@ class MyFrame(gui.MainFrame): #Instance of MainFrame class from 'gui'
     def onNotebookChange(self,e): #If tab changes
         global mode
         mode=self.notebookMain.GetSelection()
-        print mode #Print tab ID
+        print(mode) #Print tab ID
         save_prefs() #Update preferences file
     
     
@@ -731,16 +732,16 @@ class MyFrame(gui.MainFrame): #Instance of MainFrame class from 'gui'
         
     #Override what happens when the frame is closed, either by frame.Close() or by close button
     def onClose(self, evt): 
-        print "Custom close override started"
+        print("Custom close override started")
         self.Hide()
     #Clean exit sequence to be called by either icon Exit or menu Exit       
         
     def cleanExit(self): 
-        print "Clean exiting..."
+        print("Clean exiting...")
         #Run clean exit functions for closing threads etc
         #This will likely be a global function that cleans up all threads and runs as part of this cleanExit
         #SAVE SETTINGS
-        print "Saving preferences..."
+        print("Saving preferences...")
         save_prefs() #Update preferences file
         #STOP THREADS
         workthread.stop()
@@ -749,11 +750,11 @@ class MyFrame(gui.MainFrame): #Instance of MainFrame class from 'gui'
         drawthread.event_finished.wait()
         motecore.clearAll()
         #CLOSE UI
-        print "Removing taskbar icon..."
+        print("Removing taskbar icon...")
         self.taskbarIcon.RemoveIcon()
-        print "Destroying taskbar icon..."
+        print("Destroying taskbar icon...")
         self.taskbarIcon.Destroy()
-        print "Destroying self..."
+        print("Destroying self...")
         self.Destroy()
         
 
