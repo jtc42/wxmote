@@ -38,3 +38,10 @@ This is an AmbiLight clone, in which the colour of the screen edges is projected
 *Note: This mode does not work with all games. I'm unsure why, as some work but others don't. [Thumper](http://store.steampowered.com/app/356400/) is a great example of a game that both works, and looks fantastic.*
 * **Contrast** - Boosts the contract of the LED projection, to make darks darker and lights lighter.
 * **Brightness** - Scales the overall brightness of the LEDs, to make the effect more subtle.
+
+## Gradient images
+Images to be used as gradients are stored in the /gradients folder. Some examples are included already.
+
+Files must be 64 x N .bmp files, where N is the number of temperature-steps. This means that the CPU temperature range specified will be divided up into N values, and that row of pixels will be used as the gradient when the CPU is at the appropriate temperature. The top of the image corresponds to cool, the bottom corresponds to warm. 
+
+The file name will be used in all menus.
