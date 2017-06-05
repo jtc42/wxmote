@@ -13,30 +13,15 @@ mote.configure_channel(2, 16, False)
 mote.configure_channel(3, 16, False)
 mote.configure_channel(4, 16, False)
 
+N = 64
+
 tst = 1/30.0
+
+# CORE SETTINGS #
+display_mode = True
 
 
 # CORE FUNCTIONS #
-
-def setPixid(ch, n, rgb):
-    if ch == 0:
-        if n <= 15:
-            mote.set_pixel(1, n, rgb[0], rgb[1], rgb[2])
-        elif n <= 31:
-            mote.set_pixel(2, n-16, rgb[0], rgb[1], rgb[2])
-        else:
-            print("Pixel must be between 0 and 31")
-    elif ch == 1:
-        if n <= 15:
-            mote.set_pixel(3, n, rgb[0], rgb[1], rgb[2])
-        elif n <= 31:
-            mote.set_pixel(4, n-16, rgb[0], rgb[1], rgb[2])
-        else:
-            print("Pixel must be between 0 and 31")
-    else:
-        print("Channel must be 0 or 1")
-    mote.show()
-
 
 def setChannel(ch, rgb):
     for pixel in range(16):
@@ -55,6 +40,23 @@ def clearAll():
 
 clearAll()
 
+# START SET PIXEL # 
+def smart_set(pixel, rgb):
+    global display_mode
+    # Natural position with no modifiers
+    ch = pixel//16 +1
+    px = pixel%16
+    
+    rgb = [int(c) for c in rgb]
+    
+    #Apply modifiers
+    if display_mode:
+        if ch == 2 or ch == 3:  # If top right or right sticks
+            px = 15-px  # Flip pixels due to bar orientation
+    
+    # Send to mote
+    mote.set_pixel(ch, px, *rgb)
+
 
 # MATH FUNCTIONS #
 def gaussian(x, mu, sig):
@@ -62,98 +64,60 @@ def gaussian(x, mu, sig):
 
 
 # MODE FUNCTIONS #
-def rainbow(speed=1, sync=False, mode=1):
+def rainbow(speed=1):
     h = time.time() * 50 * speed
-    if sync is False:
-        for channel in range(4):
-            for pixel in range(16):
-                hue = (h + (channel * 64) + (pixel * 4)) % 360
-                r, g, b = [int(c * 255) for c in hsv_to_rgb(hue/360.0, 1.0, 1.0)]
+                 
+    for pixel in range(N):
+        hue = (h + (pixel * 4)) % 360
+        rgb = [int(c * 255) for c in hsv_to_rgb(hue/360.0, 1.0, 1.0)]
 
-                if mode == 1:  # If in back-of-monitor mode
-                    if channel == 2 or channel == 3:  # If top right or right sticks
-                        pixel = 15-pixel  # Flip pixels due to bar orientation
+        smart_set(pixel, rgb)
 
-                mote.set_pixel(channel + 1, pixel, r, g, b)
-    else:
-        for channel in range(2):
-            for pixel in range(16):
-                hue = (h + (channel * 64) + (pixel * 4)) % 360
-                r, g, b = [int(c * 255) for c in hsv_to_rgb(hue/360.0, 1.0, 1.0)]
-                mote.set_pixel(channel + 1, pixel, r, g, b)
-                mote.set_pixel(channel + 3, pixel, r, g, b)
     mote.show()
     time.sleep(0.03)
 
 
-def pulseShot(rgb, targetrgb=0, base=0.5, speed=1, phase=120, sync=True, mode=1):
+def drawGradient(rgbs, target_rgbs):
+    t_init = time.time() # Get start time
+    
+    deltas = [np.subtract(target_rgbs[i], rgbs[i]) for i,_ in enumerate(rgbs)]  # Calculate change over the course of one pulse
+
+    while time.time()-t_init < 2:
+        t = (time.time()-t_init)/2 # Calculate a scale from time throughout fade
+        draw_rgbs = [np.add(rgbs[i], t*deltas[i]) for i,_ in enumerate(rgbs)] # Calculate RGBs from colour fade
+
+        for pixel in range(N):
+            smart_set(pixel, draw_rgbs[pixel])  # Set pixel on bottom
+            
+        mote.show()  # Draw
+
+
+def pulseShot(rgbs, target_rgbs, base=0.5, speed=1, phase=120):
+    """
+    rgbs and target_rgbs are a 64 long array of [r,g,b] lists, corresponding to the 64 LEDs
+    """
+    
     t_init = time.time()
     h = (time.time()-t_init) * 50 * speed + 360
-    delta = [0, 0, 0]
-    rgb0 = rgb  # Record initial RGB
-    if targetrgb:  # If colour should change during pulse
-        delta = np.subtract(targetrgb, rgb)  # Calculate change over the course of one pulse
-
-    if sync is True:  # If top and bottom and synchronised
-        channels = range(2)
-    else:
-        channels = range(4)
-
+        
+    deltas = [np.subtract(target_rgbs[i], rgbs[i]) for i,_ in enumerate(rgbs)]  # Calculate change over the course of one pulse
+    
     while h < 720:  # Stop pulse after 1 cycle
+    
+        t = (h % 360)/360  # Calculate a scale from time throughout pulse
+        
+        draw_rgbs = [np.add(rgbs[i], t*deltas[i]) for i,_ in enumerate(rgbs)] # Calculate RGBs from colour fade
 
-        if targetrgb:  # If colour should change during pulse
-            t = (h % 360)/360  # Calculate a scale from time throughout pulse
-            rgb = [int(rgb0[i] + (t*delta[i])) for i in range(3)]  # Replace rgb with new values based on fade
+        for pixel in range(N):  # For all pixels in one channel
+        
+            theta = (h + (pixel * 4) + phase) % 360  # Calculate angle
+            scale = hsv_to_rgb(theta/360.0, 1.0, 1.0)[0] * (1.0 - base)  # Calculate brightness based on angle and base value
+                              
+            rgb = [ int(col*scale + col*base) for col in draw_rgbs[pixel] ]  # Calculate rgb values for pixel
 
-        for channel in channels:  # For used channels
-            for pixel in range(16):  # For all pixels in one channel
-                theta = (h + (channel * 64) + (pixel * 4) + phase) % 360  # Calculate angle
-                scale = hsv_to_rgb(theta/360.0, 1.0, 1.0)[0] * (1.0 - base)  # Calculate brightness based on angle and base value
-                r, g, b = [int(col*scale +col*base) for col in rgb]  # Calculate rgb values for pixel
+            smart_set(pixel, rgb)  # Set pixel on bottom
 
-                if mode == 1:  # If in back-of-monitor mode
-                    if channel == 2 or channel == 3:  # If top right or right sticks
-                        pixel=15-pixel  # Flip pixels due to bar orientation
-                
-                mote.set_pixel(channel + 1, pixel, r, g, b)  # Set pixel on bottom
-                if sync==True:
-                    mote.set_pixel(channel + 3, pixel, r, g, b)  # Set pixel on top
                 
         mote.show()  # Draw
         time.sleep(0.03)  # Rest
         h = (time.time()-t_init) * 50 * speed +360  # Calculate h based on new time
-
-
-##UNUSED
-
-def warning(rgb, base=0.2, speed=1):
-    h = time.time() * 200 * speed
-    theta = h % 360
-    scale = (1.0-base)*(360-theta)/360.0
-    for channel in range(4):
-        for pixel in range(16):
-            r, g, b = [int(col*scale +col*base) for col in rgb]
-            mote.set_pixel(channel + 1, pixel, r, g, b)
-    mote.show()
-    time.sleep(0.03)
-
-
-def pulse(rgb, base=0.5, speed=1, sync=False):
-    h = time.time() * 50 * speed
-    if sync==False:
-        for channel in range(4):
-            for pixel in range(16):
-                theta = (h + (channel * 64) + (pixel * 4)) % 360
-                scale = hsv_to_rgb(theta/360.0, 1.0, 1.0)[0] * (1.0-base)
-                r,g,b=[int(col*scale +col*base) for col in rgb]
-                mote.set_pixel(channel + 1, pixel, r, g, b)
-    else:
-        for channel in range(2):
-            for pixel in range(16):
-                theta = (h + (channel * 64) + (pixel * 4)) % 360
-                scale = hsv_to_rgb(theta/360.0, 1.0, 1.0)[0] * (1.0-base)
-                r, g, b = [int(col*scale +col*base) for col in rgb]
-                mote.set_pixel(channel + 1, pixel, r, g, b)
-                mote.set_pixel(channel + 3, pixel, r, g, b)
-    mote.show()
-    time.sleep(0.03)

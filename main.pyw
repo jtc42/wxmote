@@ -19,12 +19,13 @@ import win32gui
 import win32ui 
 import win32con
 
+import glob
+import os
 from PIL import Image
 from PIL import ImageGrab
 
 #Custom modules
 import gui
-import colorgradient
 import motecore
 
 
@@ -34,33 +35,37 @@ import motecore
 ###SETTINGS
 VersionID = "Version 3.20170326.1200"
 
-#System settings
-mode=0 #0=System, 1=Rainbow, 2=Cinema
+# System settings
+mode=0 # 0=System, 1=Rainbow, 2=Cinema
 userrgb=[0,255,0] #Default system RGB value
 
-#Monitor mode settings
-gradients = [
-    ("DeepBlue_Red",['#0000ff','#ff3700','#ff0000']), 
-    ("Blue_Red",['#0064FF','#0000ff']),
-    ("Blue_Orange",['#0064FF','#0064FF','#FF2000','#FF2000']), #Doubled up for rapid change
-    ("Cyan_Orange",['#00ffa0','#00cdff','#FF2000','#FF2000']), 
-    ("Orange_Red",['#FF2000','#ff0000'])
-]
+# Monitor mode settings
 
-monitorload=1 #Pulse speed by CPU load
-monitortemp=1 #Pulse colour by CPU temp
+# Load gradient maps
+# TODO: Auto-load all from folder
+mapfiles = glob.glob('gradients/*.bmp')
 
-defaultgradient=0 #Default CPU temp gradient
+maps = []
 
-Tmin=30 #Minimum CPU temperature
-Tmax=60 #Maximum CPU temperature
+for file in mapfiles:
+    img = Image.open(file)
+    nme = os.path.basename(file)[:-4]
+    maps.append( (nme, np.array(img).astype(int)) )
 
-#Cinema mode settings
-n_avg=10 #Number of frames to time-average
-col_timeavg=[] #Initial empty time average list
-cntrst=2.5 #Contrast factor
-brtns=1.0
-correction=[1.0,0.9,0.9]
+monitorload=1 # Pulse speed by CPU load
+monitortemp=1 # Pulse colour by CPU temp
+
+defaultgradient=0 # Default CPU temp gradient
+
+T_minmax = [30, 60] # Min and max CPU temperatures
+
+           
+# Cinema mode settings
+n_avg = 10 # Number of frames to time-average
+col_timeavg = [] # Initial empty time average list
+cntrst=2.5 # Contrast factor
+brtns = 1.0
+correction = [1.0,0.9,0.9]
 
 """
 All saved preferences:
@@ -69,12 +74,12 @@ mode, userrgb, monitorload, monitortemp, defaultgradient, Tmin, Tmax, n_avg, col
 import pickle
 
 def load_prefs():
-    global mode, userrgb, monitorload, monitortemp, defaultgradient, Tmin, Tmax, n_avg, col_timeavg, cntrst, brtns, correction
-    mode, userrgb, monitorload, monitortemp, defaultgradient, Tmin, Tmax, n_avg, col_timeavg, cntrst, brtns, correction = pickle.load(open("prefs.pickle", "rb"))
+    global mode, userrgb, monitorload, monitortemp, defaultgradient, T_minmax, n_avg, col_timeavg, cntrst, brtns, correction
+    mode, userrgb, monitorload, monitortemp, defaultgradient, T_minmax, n_avg, col_timeavg, cntrst, brtns, correction = pickle.load(open("prefs.pickle", "rb"))
 
 def save_prefs():
-    global mode, userrgb, monitorload, monitortemp, defaultgradient, Tmin, Tmax, n_avg, col_timeavg, cntrst, brtns, correction
-    pickle.dump([mode, userrgb, monitorload, monitortemp, defaultgradient, Tmin, Tmax, n_avg, col_timeavg, cntrst, brtns, correction], open("prefs.pickle", "wb"))
+    global mode, userrgb, monitorload, monitortemp, defaultgradient, T_minmax, n_avg, col_timeavg, cntrst, brtns, correction
+    pickle.dump([mode, userrgb, monitorload, monitortemp, defaultgradient, T_minmax, n_avg, col_timeavg, cntrst, brtns, correction], open("prefs.pickle", "wb"))
 
 try:
     print("Loading preferences...")
@@ -89,14 +94,13 @@ except (OSError, IOError) as e:
 ###DATA
 
 ##Monitor Data
-monrefresh=2
-monitordata=[0,0,0,0]
+monrefresh = 2
+monitordata = [0,0,0,0]
 
-gradstrings = [i[0] for i in gradients] #List of names of gradients
-n=Tmax-Tmin #Number of discrete temperatures to consider
-coldict=[] #Set up colour dictionary
+mapstrings = [i[0] for i in maps] # List of names of gradients
 
-##Cinema Data
+              
+## Cinema Data
 hwnd=win32gui.GetDesktopWindow() #Set current win32 window to whole desktop
 led_layout=[16,32,16] #Left, top, right
 
@@ -106,35 +110,22 @@ led_layout=[16,32,16] #Left, top, right
 ###FUNCTIONS
 
 ##Monitor Functions
-
-def updateGradient(codes): #Update the colour dictionary of calculated gradient values
-    global n
-    global coldict
-    coldict=[] #Clear colour dictionary
-    values=colorgradient.polylinear_gradient(codes,n) #Create gradient with 'n' values
-    coldict=[[values['r'][i],values['g'][i],values['b'][i]] for i in range(0,len(values['r'])) ] #Create colour dictionary as an array of [r,g,b] lists
-
-
-def temp2rgb(T): #Calculate which entry to lookup from colour dictionary based on CPU temperature
-    global Tmin
-    global Tmax
-    global coldict
-    global userrgb
-    global monitordata
+def temp2rgbs(T):
+    global T_minmax
+    global defaultgradient
+    p = maps[defaultgradient][1] # Load in gradient from current default
     
-    if T==0: #If T=0 this means monitor application is closed
-        rgb=userrgb  #Set to user-defined rgb
-    elif T<Tmin: #If T is lower than Tmin (but not zero)
-        rgb=coldict[0] #Set to lowest value on gradient
-    elif T>=Tmax: #If T is greater than or equal to Tmax
-        rgb=coldict[-1] #Set to highest value on the gradient
-    else: #If not zero and between Tmin and Tmax
-        rgb=coldict[int(T)-Tmin] #Set to value calculated by position between Tmin and Tmax
-    return rgb #Return calculated value
+    T = np.clip(T, T_minmax[0], T_minmax[1]-1) # Bound to range of temperatures
     
+    T_rel = (T-T_minmax[0])/(T_minmax[1]-T_minmax[0]) # Calculate 0-1 scalar of temperature
+    n_grads = np.shape(p)[0] # Number of temperature-based gradients in map
+    
+    grad_id = int(T_rel*n_grads) # Calculate ID of gradient to be used
+    
+    return p[grad_id]
+
 
 ##Cinema functions
-
 def getScreen(hwnd,mode=1):
 
     if mode==0: #If in PIL mode
@@ -197,9 +188,6 @@ def getCoords(image, led_layout, border_ratio=1, samples=4, scrollbar_width=17):
 
 
 ###STARTUP
-
-##Monitor startup
-updateGradient(gradients[defaultgradient][1]) #Update gradient to default on initialization
 
 ##Cinema startup
 img_init=getScreen(hwnd) #Get initial screen
@@ -404,9 +392,10 @@ class WorkThread:
 ### DRAW THREAD ###
 class DrawThread:
     #Initial empty variables for system mode
-    rgb_old=[0,0,0] #Last RGB data (used for monitoring if static colour should redraw, and if pulse should fade)
-    monitor_old=0 
-    monitor_speed= 0
+    rgbs = [[0,0,0]]*64
+    rgbs_old = [[0,0,0]]*64 # Last RGB data (used for monitoring if static colour should redraw, and if pulse should fade)
+    monitor_old=0 # Old CPU load
+    monitor_speed= 0 # Old pulse speed
     
     #Initially empty variables for ambilight mode
     #Initially empty variables for rainbow mode
@@ -419,38 +408,19 @@ class DrawThread:
     
     ##SYSTEM MONITOR FUNCTIONS
     
-    def drawshotCPUPulse(self,monitordata,rgb): #Draw a single shot in CPU pulse mode
+    def drawshotCPUPulse(self): #Draw a single shot in CPU pulse mode
+        global monitordata
+    
         if self.monitor_old[1]!=monitordata[1]: #If load has changed
             self.monitor_speed= 0.042*monitordata[1] + 1.8 #Recalculate pulse speed
             self.monitor_old=monitordata #Update 'monitorold' for future comparisons
-            
-        if rgb!=self.rgb_old: #If colour has changed based on temperature or user
-            targetrgb=rgb #Set new colours to be pulse target
-            pulsergb=self.rgb_old #Set pulse initial colour to be previous colour
-            self.rgb_old=rgb #Update 'rgbold' for future comparisons
-            
-        else: #If colour has not changed
-            targetrgb=0 #Clear target
-            pulsergb=rgb #Send current colour to pulse
-            
-        motecore.pulseShot(pulsergb, targetrgb=targetrgb, base=0.7, speed=self.monitor_speed, sync=False) #Draw a pulse cycle
+           
+        motecore.pulseShot(self.rgbs_old, self.rgbs, base=0.7, speed=self.monitor_speed) #Draw a pulse cycle
+        self.rgbs_old=self.rgbs #Update 'rgbold' for future comparisons
     
-    def drawshotStatic(self,rgb): #Draw a single shot of static colour (ie includes fades when RGB is changed)
-        if rgb!=self.rgb_old: #If colour has changed based on temperature or user
-            targetrgb=rgb #Set new colours to be pulse target
-            delta=np.subtract(targetrgb,self.rgb_old)
-            print(delta)
-            t0=time.time()
-            while time.time()-t0<2:
-                scale=(time.time()-t0)/2
-                #print scale
-                drawrgb=[int(self.rgb_old[i] + (scale*delta[i])) for i in range(3)]
-                motecore.setAll(drawrgb)
-                time.sleep(0.03)
-                
-        motecore.setAll(rgb) #Send new draw command to all pixels
-        self.rgb_old=rgb #Update 'rgbold' for future comparisons
-        time.sleep(1) #Rest for 1 second before recomparing
+    def drawshotStatic(self): #Draw a single shot of static colour (ie includes fades when RGB is changed)
+        motecore.drawGradient(self.rgbs_old, self.rgbs)
+        self.rgbs_old=self.rgbs #Update 'rgbold' for future comparisons
     
     
     ##CINEMA MODE FUNCTIONS
@@ -507,15 +477,15 @@ class DrawThread:
                 workthread.event_system.wait() #Wait for first data collection to complete
                 ##Update colours
                 if monitortemp==1: #If colour based on CPU temperature
-                    rgb=temp2rgb(monitordata[0]) #Set local colour to calculated from global temperature
+                    self.rgbs=temp2rgbs(monitordata[0]) #Set local colour to calculated from global temperature
                 else:
-                    rgb=userrgb #Set local colour to global user-defined values
+                    self.rgbs=[userrgb]*64 #Set local colour to global user-defined values
                 
                 ##Draw a shot based on animation mode
                 if monitorload==1: #If pulsing based on CPU load
-                    self.drawshotCPUPulse(monitordata,rgb)
+                    self.drawshotCPUPulse()
                 else: #If not pulsing
-                    self.drawshotStatic(rgb)
+                    self.drawshotStatic()
                     
             
             ## IF ON RAINBOW PAGE##
@@ -633,12 +603,12 @@ class MyFrame(gui.MainFrame): #Instance of MainFrame class from 'gui'
             print("Static picker disabled")
             
         #Populate gradient choice options and select default
-        self.menuGradChoice.SetItems(gradstrings)
+        self.menuGradChoice.SetItems(mapstrings)
         self.menuGradChoice.SetSelection(defaultgradient)
         
         #Populate T boxes
-        self.spinTmin.SetValue(Tmin)
-        self.spinTmax.SetValue(Tmax)
+        self.spinTmin.SetValue(T_minmax[0])
+        self.spinTmax.SetValue(T_minmax[1])
         
         #Update monitor T check box
         self.checkMonitorTemp.SetValue(monitortemp)
@@ -667,15 +637,12 @@ class MyFrame(gui.MainFrame): #Instance of MainFrame class from 'gui'
     def OnColourChange(self,e): 
         global userrgb
         userrgb = self.pickerBaseColour.Colour[:3]
-        print(userrgb)
         save_prefs() #Update preferences file
         
     def onGradChoice(self,e):
         global defaultgradient
-        print("Gradient selected:")
         selected = self.menuGradChoice.GetSelection()
-        print(selected)
-        updateGradient(gradients[selected][1])
+        print("Gradient selected: {}".format(selected))
         print("Updating preferences...")
         defaultgradient=selected
         save_prefs() #Update preferences file
@@ -692,15 +659,8 @@ class MyFrame(gui.MainFrame): #Instance of MainFrame class from 'gui'
         save_prefs() #Update preferences file
     
     def onTchange(self,e):
-        global Tmin
-        global Tmax
-        global n
-        global gradients
-        
-        Tmin=self.spinTmin.GetValue()
-        Tmax=self.spinTmax.GetValue()
-        n=Tmax-Tmin
-        updateGradient(gradients[defaultgradient][1])
+        global T_minmax
+        T_minmax = [self.spinTmin.GetValue(), self.spinTmax.GetValue()]
         save_prefs() #Update preferences file
         
     def OnMonitorLoadChange(self,e): 
