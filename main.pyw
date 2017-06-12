@@ -42,7 +42,6 @@ userrgb=[0,255,0] #Default system RGB value
 # Monitor mode settings
 
 # Load gradient maps
-# TODO: Auto-load all from folder
 mapfiles = glob.glob('gradients/*.bmp')
 
 maps = []
@@ -52,8 +51,9 @@ for file in mapfiles:
     nme = os.path.basename(file)[:-4]
     maps.append( (nme, np.array(img).astype(int)) )
 
-monitorload=1 # Pulse speed by CPU load
-monitortemp=1 # Pulse colour by CPU temp
+monitorload = 1 # Pulse speed by CPU load
+monitortemp = 1 # Pulse colour by CPU temp
+monrefresh = 2 # Time between probing system
 
 defaultgradient=0 # Default CPU temp gradient
 
@@ -69,17 +69,17 @@ correction = [1.0,0.9,0.9]
 
 """
 All saved preferences:
-mode, userrgb, monitorload, monitortemp, defaultgradient, Tmin, Tmax, n_avg, col_timeavg, cntrst, brtns, correction
+mode, userrgb, monitorload, monitortemp, defaultgradient, T_minmax, cntrst, brtns
 """
 import pickle
 
 def load_prefs():
-    global mode, userrgb, monitorload, monitortemp, defaultgradient, T_minmax, n_avg, col_timeavg, cntrst, brtns, correction
-    mode, userrgb, monitorload, monitortemp, defaultgradient, T_minmax, n_avg, col_timeavg, cntrst, brtns, correction = pickle.load(open("prefs.pickle", "rb"))
+    global mode, userrgb, monitorload, monitortemp, defaultgradient, T_minmax, cntrst, brtns
+    mode, userrgb, monitorload, monitortemp, defaultgradient, T_minmax, cntrst, brtns = pickle.load(open("prefs.pickle", "rb"))
 
 def save_prefs():
-    global mode, userrgb, monitorload, monitortemp, defaultgradient, T_minmax, n_avg, col_timeavg, cntrst, brtns, correction
-    pickle.dump([mode, userrgb, monitorload, monitortemp, defaultgradient, T_minmax, n_avg, col_timeavg, cntrst, brtns, correction], open("prefs.pickle", "wb"))
+    global mode, userrgb, monitorload, monitortemp, defaultgradient, T_minmax, cntrst, brtns
+    pickle.dump([mode, userrgb, monitorload, monitortemp, defaultgradient, T_minmax, cntrst, brtns], open("prefs.pickle", "wb"))
 
 try:
     print("Loading preferences...")
@@ -94,9 +94,7 @@ except (OSError, IOError) as e:
 ###DATA
 
 ##Monitor Data
-monrefresh = 2
 monitordata = [0,0,0,0]
-
 mapstrings = [i[0] for i in maps] # List of names of gradients
 
               
@@ -295,13 +293,13 @@ class WorkThread:
         return out
     
     
-    def colChannels(self,l_avg,t_avg,r_avg): ##Convert colour lists to LED channels 16 long
-        colours=[l_avg,t_avg[:16],t_avg[16:],r_avg]
-        colours[0].reverse() #Reverse for orientation of LED bar
-        colours[2].reverse() #Reverse for orientation of LED bar
-        colours[3].reverse() #Reverse for orientation of LED bar
+    def colChannels(self,l_avg,t_avg,r_avg): #Convert colour lists to single 64 long list
+        # Reverse left side so zero starts at bottom, and line follows screen around from there
+        l_avg = np.flip(l_avg, 0)
+        # Concatenate to get 64-wide colour list
+        cols=np.concatenate( (l_avg,t_avg[:16],t_avg[16:],r_avg) )
         
-        return colours
+        return cols
         
         
     
@@ -460,6 +458,7 @@ class DrawThread:
         
         global monitorload, monitortemp #Boolean, monitor cpu or not
         
+        global colours, col_timeavg, n_avg
         global correction, brtns, cntrst
         
         ##All monitor data from other thread stored globally
@@ -494,27 +493,28 @@ class DrawThread:
                 
                 
             elif mode==2: #If in cinema mode
-                workthread.event_cinema.wait()
-                
-                #Time average as rapidly as possible
+                workthread.event_cinema.wait() # Wait for first acquisition on worker thread, by listening for flag
+                time.sleep(1.0/240) #Lock at 120fps ish
+
                 col_timeavg.insert(0,colours)
                 
                 if len(col_timeavg)>=n_avg:
                     del col_timeavg[-1]
+                    
                 
                 #Draw to Mote
-                for i in range(4):
-                    for px in range(16):
-                        r=int(np.mean([frame[i][px][0] for frame in col_timeavg]) *correction[0] *brtns)
-                        g=int(np.mean([frame[i][px][1] for frame in col_timeavg]) *correction[1] *brtns)
-                        b=int(np.mean([frame[i][px][2] for frame in col_timeavg]) *correction[2] *brtns)
-                        
-                        r=self.contrast(r,cntrst)
-                        g=self.contrast(g,cntrst)
-                        b=self.contrast(b,cntrst)
-                        
-                        motecore.mote.set_pixel(i+1, px, r, g, b)
-                #print "Frame draw"
+
+                for px in range(64):
+                    r=int(np.mean([frame[px][0] for frame in col_timeavg]) *correction[0] *brtns)
+                    g=int(np.mean([frame[px][1] for frame in col_timeavg]) *correction[1] *brtns)
+                    b=int(np.mean([frame[px][2] for frame in col_timeavg]) *correction[2] *brtns)
+                    
+                    r=self.contrast(r,cntrst)
+                    g=self.contrast(g,cntrst)
+                    b=self.contrast(b,cntrst)
+                
+                    motecore.smart_set(px, [r,g,b])
+                
                 motecore.mote.show()    
                 
         self.event_finished.set()

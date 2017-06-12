@@ -51,7 +51,7 @@ def smart_set(pixel, rgb):
     
     #Apply modifiers
     if display_mode:
-        if ch == 2 or ch == 3:  # If top right or right sticks
+        if ch == 3 or ch == 4:  # If top right or right sticks
             px = 15-px  # Flip pixels due to bar orientation
     
     # Send to mote
