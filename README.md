@@ -36,7 +36,7 @@ No options yet. Just makes rainbows
 This is an AmbiLight clone, in which the colour of the screen edges is projected by the Mote sticks.
 
 *Note: This mode does not work with all games. I'm unsure why, as some work but others don't. [Thumper](http://store.steampowered.com/app/356400/) is a great example of a game that both works, and looks fantastic.*
-* **Contrast** - Boosts the contract of the LED projection, to make darks darker and lights lighter.
+* **Contrast** - Boosts the contrast of the LED projection, to make darks darker and lights lighter.
 * **Brightness** - Scales the overall brightness of the LEDs, to make the effect more subtle.
 
 ## Gradient images
