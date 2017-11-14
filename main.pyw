@@ -15,21 +15,26 @@ import psutil
 import wmi
 import pythoncom
 
-import win32gui
-import win32ui 
-import win32con
+from PIL import Image
+
 
 import glob
 import os
-from PIL import Image
-from PIL import ImageGrab
+
 
 #Custom modules
 import gui
+import cinema
 import motecore
+import sysinfo
 
 
+"""
+TODO: Shift global variables into a class.
+On startup, create class instance. That object gets passed to the 2 threads as
+an argument. Both threads then operate on that object to read/write variables.
 
+"""
 
 
 ###SETTINGS
@@ -42,6 +47,7 @@ userrgb=[0,255,0] #Default system RGB value
 # Monitor mode settings
 
 # Load gradient maps
+# TODO: Roll into function
 mapfiles = glob.glob('gradients/*.bmp')
 
 maps = []
@@ -51,6 +57,7 @@ for file in mapfiles:
     nme = os.path.basename(file)[:-4]
     maps.append( (nme, np.array(img).astype(int)) )
 
+# TODO: Refactor for more sensible names
 monitorload = 1 # Pulse speed by CPU load
 monitortemp = 1 # Pulse colour by CPU temp
 monrefresh = 2 # Time between probing system
@@ -61,6 +68,7 @@ T_minmax = [30, 60] # Min and max CPU temperatures
 
            
 # Cinema mode settings
+# TODO: Refactor for more sensible names
 n_avg = 10 # Number of frames to time-average
 col_timeavg = [] # Initial empty time average list
 cntrst=2.5 # Contrast factor
@@ -71,6 +79,7 @@ correction = [1.0,0.9,0.9]
 All saved preferences:
 mode, userrgb, monitorload, monitortemp, defaultgradient, T_minmax, cntrst, brtns
 """
+# TODO: Tidy up, fix line length
 import pickle
 
 def load_prefs():
@@ -94,12 +103,12 @@ except (OSError, IOError) as e:
 ###DATA
 
 ##Monitor Data
+# TODO: Monitor data to named dictionary
 monitordata = [0,0,0,0]
 mapstrings = [i[0] for i in maps] # List of names of gradients
 
               
 ## Cinema Data
-hwnd=win32gui.GetDesktopWindow() #Set current win32 window to whole desktop
 led_layout=[16,32,16] #Left, top, right
 
 
@@ -109,6 +118,7 @@ led_layout=[16,32,16] #Left, top, right
 
 ##Monitor Functions
 def temp2rgbs(T):
+    # TODO: Refactor for more sensible names
     global T_minmax
     global defaultgradient
     p = maps[defaultgradient][1] # Load in gradient from current default
@@ -123,186 +133,26 @@ def temp2rgbs(T):
     return p[grad_id]
 
 
-##Cinema functions
-def getScreen(hwnd,mode=1):
-
-    if mode==0: #If in PIL mode
-        im = ImageGrab.grab()
-        
-    else: # If in win32 mode
-        # Get bitmap data from win32
-        wDC = win32gui.GetWindowDC(hwnd)
-        dcObj=win32ui.CreateDCFromHandle(wDC)
-        cDC=dcObj.CreateCompatibleDC()
-        
-        dataBitMap = win32ui.CreateBitmap()
-        
-        # Calculate dimensions
-        l,t,r,b=win32gui.GetWindowRect(hwnd)
-        h=b-t
-        w=r-l
-        
-        # Create bitmap from data
-        dataBitMap.CreateCompatibleBitmap(dcObj, w, h)
-        cDC.SelectObject(dataBitMap)
-        cDC.BitBlt((0,0),(w, h) , dcObj, (0,0), win32con.SRCCOPY)
-    
-        
-        # Convert to PIL
-        bmpinfo = dataBitMap.GetInfo()
-        bmpstr = dataBitMap.GetBitmapBits(True)
-        im = Image.frombuffer(
-            'RGB',
-            (bmpinfo['bmWidth'], bmpinfo['bmHeight']),
-            bmpstr, 'raw', 'BGRX', 0, 1)
-        
-        
-        # Free Resources
-        dcObj.DeleteDC()
-        cDC.DeleteDC()
-        win32gui.ReleaseDC(hwnd, wDC)
-        win32gui.DeleteObject(dataBitMap.GetHandle())
-    
-    return im
-
-
-def getCoords(image, led_layout, border_ratio=1, samples=4, scrollbar_width=17): #Samples gives number of checkerboard nodes to include in averaging
-    width=image.size[0]
-    height=image.size[1]
-
-    vstep=int((height/led_layout[0])*border_ratio)
-    hstep=int((width/led_layout[1])*border_ratio)
-    
-    cbv=int(vstep/(samples*border_ratio)) #Checkerboard size perpendicular
-    cbh=int(hstep/(samples*border_ratio))
-
-    l_coords=[ [[j,i] for i in range(height)[::cbv]] for j in range(vstep)[::cbv] ]
-    t_coords=[ [[i,j] for i in range(width)[::cbh]] for j in range(hstep)[::cbh] ]
-    r_coords=[ [[width-(1+j),i] for i in range(height)[::cbv]] for j in range(vstep)[::cbv] ]
-    
-    return [l_coords,t_coords,r_coords]
-
-
-
-
-###STARTUP
-
-##Cinema startup
-img_init=getScreen(hwnd) #Get initial screen
-l_set, t_set, r_set = getCoords(img_init,led_layout) #Get initial coordinate list
-
-
-
 
 ###THREADS
 
 ##WORKER THREAD##
 class WorkThread:
+    
     event_system=threading.Event() #Event flag for first system info call
     event_cinema=threading.Event() #Event flag for first cinema info call
     event_finished=threading.Event() #Event flag for worker thread finished
     
-    probeint=0.1 #Set time to probe CPU load over
-
+    # TODO: Refactor for more sensible names
     def __init__(self):
         self._running=False
-        
-        
-    ##SYSTEM MONITOR FUNCTIONS
 
-    def getTemps(self, w):
-        names=[] #Clear core names
-        temps=[] #Clear T data
-        
-        temperature_infos = w.Sensor() #Get sensor data
-        
-        for sensor in temperature_infos: #For all sensors
-            if sensor.SensorType==u'Temperature': #If sensor if for temperature
-                if 'CPU Core' in sensor.Name: #If sensor is for CPU Core
-                    names.append(sensor.Name) #Add name to name list
-                    temps.append(sensor.Value) #Add value to temperature list
-                if 'CPU Package' in sensor.Name: #If sensor if for CPU Package
-                    names.append(sensor.Name) #Add name to end of list
-                    temps.append(sensor.Value) #Add value to end of temperature list
-        return [names, temps] #Return names and temperatures
-
-    def getInfo(self,w):
-        coreloads=psutil.cpu_percent(interval=self.probeint, percpu=True) #Get usage for each core
-        cpuload=round(np.mean(coreloads),3) #Get CPU usage from mean of cores
-        mem=psutil.virtual_memory() #Get RAM info
-        ssd=psutil.disk_usage('/')[3] #Get boot drive load
-        cputemps=self.getTemps(w)[1] #Value at position 4 is the package temperature
-        return [coreloads, cpuload, mem[2], ssd, cputemps]
-
-    def getVals(self, w):
-        info=self.getInfo(w) #Get all sys info
-        if not info[4]: #If temperature array is empty
-            cputemp=0 #Log T as zero
-        else:
-            cputemp=info[4][-1] #Log T as last value from T array (this is the package temperature)
-        #CPU temperature, CPU load, RAM load, Storage load
-        return [cputemp, info[1],info[2],info[3]]
-    
-    def updateMonitor(self,w):
+    # TODO: Do something to replace this mess
+    def updateMonitor(self, w):
         global monitordata
-        monitordata=self.getVals(w)
+        monitordata=sysinfo.getVals(w)
         
-        
-    
-    ##CINEMA MODE FUNCTIONS
-    
-    def getColours(self,image, coords): #Get colours from image at coordinates
-        out=[image.getpixel((xy[0], xy[1])) for xy in coords]
-        return out
-      
-    
-    def boxColours(self,col_list, n): #Boxcar average a list of colours
-        #n = number of steps/output entries
-    
-        out=[] #Empty output array, will be filles with [r,g,b] lists
-        
-        step=int(len(col_list)/n)
-        
-        for i in range(n): #For each "box"
-            #print i
-            start_px=step*i #Find start point ID
-            #print "Start px: "+str(start_px)
-            
-            rav=np.mean([col_list[start_px+j][0] for j in range(step)])
-            gav=np.mean([col_list[start_px+j][1] for j in range(step)])
-            bav=np.mean([col_list[start_px+j][2] for j in range(step)])
-            
-            out.append([int(rav),int(gav),int(bav)])
-        
-        return out
-    
-    
-    def avgLists(self,col_lists): #Average several lists of colours (used to average perpendicular to line)
-        #navg=len(col_lists) #Number of lists being averaged over
-        length=len(col_lists[0]) #Length of each list of colours
-        
-        out=[]
-        
-        for i in range(length): #For each pixel box
-            val=[]
-            for rgb in range(3):
-                val.append(int(np.mean( [stack[i][rgb] for stack in col_lists ] )))
-            
-            out.append(val)
-        
-        return out
-    
-    
-    def colChannels(self,l_avg,t_avg,r_avg): #Convert colour lists to single 64 long list
-        # Reverse left side so zero starts at bottom, and line follows screen around from there
-        l_avg = np.flip(l_avg, 0)
-        # Concatenate to get 64-wide colour list
-        cols=np.concatenate( (l_avg,t_avg[:16],t_avg[16:],r_avg) )
-        
-        return cols
-        
-        
-    
+
     ##THREAD FUNCTIONS
     
     def stop(self): #Stop and clear
@@ -317,6 +167,7 @@ class WorkThread:
         
     def main(self):
         #Monitor global variables
+        # TODO: Try to shift out of global namespace and into object/functions. After splitting functions into files.
         global monitordata
         global monrefresh
         global monitorload
@@ -324,56 +175,33 @@ class WorkThread:
         
         #Cinema global variables
         global colours
-        global img_init
-        global hwnd
         global l_set, t_set, r_set
         
         #Timing flags
-        self.event_system.clear()
-        self.event_cinema.clear()
-        self.event_finished.clear()
+        self.event_system.clear() # Event for first data acquisition
+        self.event_cinema.clear() # Event for first data acquisition
+        self.event_finished.clear() # Event for thread ending (used for program exit)
         
         #Monitor startup
         pythoncom.CoInitialize()
-        w = wmi.WMI(namespace="root\OpenHardwareMonitor")
+        # TODO: Redefine sysinfo.w here (see launchpad script)
+        sysinfo.w = wmi.WMI(namespace="root\OpenHardwareMonitor")
         
         while self._running==True: #While terminate command not sent
-        
         
             if mode==0: #If in system mode
                 if monitorload==1 or monitortemp==1: #If monitoring either load or temperature
                     #print "Monitor data updated"
-                    self.updateMonitor(w) #Update global monitor data
+                    self.updateMonitor(sysinfo.w) #Update global monitor data
                 #print "Monitor thread pass"
                 self.event_system.set()
                 time.sleep(monrefresh) #Rest for one monitor refresh period
                 
-                
             elif mode==2: #If in cinema mode
-                img=getScreen(hwnd)
-                
-                if img.size!=img_init.size: #If resolution has changed
-                    print("Updating resolution")
-                    l_set, t_set, r_set = getCoords(img,led_layout) #Update coordinates
-                    img_init = img #Update comparison image
-                
-                #Get colours for all pixels
-                l_cols=[self.getColours(img, coords) for coords in l_set]
-                t_cols=[self.getColours(img, coords) for coords in t_set]
-                r_cols=[self.getColours(img, coords) for coords in r_set]
-                
-                #Boxcar average each row of colours
-                l_box=[self.boxColours(lst,led_layout[0]) for lst in l_cols]
-                t_box=[self.boxColours(lst,led_layout[1]) for lst in t_cols]
-                r_box=[self.boxColours(lst,led_layout[2]) for lst in r_cols]
-                
-                #Perpendicular average all boxcar lists
-                l_avg=self.avgLists(l_box)
-                t_avg=self.avgLists(t_box)
-                r_avg=self.avgLists(r_box)
+                img = cinema.get_screen(cinema.hwnd)
                 
                 #Convert colour data to Mote data
-                colours = self.colChannels(l_avg,t_avg,r_avg)
+                colours = cinema.get_channels(img, led_layout)
                 
                 #Set flag for first acquisition
                 self.event_cinema.set()
@@ -394,11 +222,10 @@ class DrawThread:
     rgbs_old = [[0,0,0]]*64 # Last RGB data (used for monitoring if static colour should redraw, and if pulse should fade)
     monitor_old=0 # Old CPU load
     monitor_speed= 0 # Old pulse speed
+
     
-    #Initially empty variables for ambilight mode
-    #Initially empty variables for rainbow mode
-    
-    event_finished=threading.Event() #Event flag for worker thread finished
+    # TODO: Change to self.event_finished
+    event_finished=threading.Event() # Event for thread ending (used for program exit)
 
     def __init__(self):
         self._running=False
