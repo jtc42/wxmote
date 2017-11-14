@@ -198,7 +198,7 @@ class WorkThread:
                 time.sleep(monrefresh) #Rest for one monitor refresh period
                 
             elif mode==2: #If in cinema mode
-                img = cinema.get_screen(cinema.hwnd)
+                img = cinema.get_screen(cinema.hwnd, mode = 'win32')
                 
                 #Convert colour data to Mote data
                 colours = cinema.get_channels(img, led_layout)

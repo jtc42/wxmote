@@ -1,8 +1,10 @@
 # -*- coding: utf-8 -*-
+import numpy as np
+
 from PIL import Image
 from PIL import ImageGrab
 
-import numpy as np
+import mss
 
 import win32gui
 import win32ui 
@@ -28,12 +30,17 @@ def mesh(xy, span, step):
 
 
 ##Cinema functions
-def get_screen(hwnd, use_pil = False):
+def get_screen(hwnd, mode = 'win32'):
 
-    if use_pil: #If in PIL mode
+    if mode == 'mss':
+        with mss.mss() as sct:
+            sct_img = sct.grab(sct.monitors[1])
+            im = Image.frombytes('RGB', sct_img.size, sct_img.rgb)
+
+    elif mode == 'pil': #If in PIL mode
         im = ImageGrab.grab()
         
-    else: # If in win32 mode
+    elif mode == 'win32': # If in win32 mode
         # Get bitmap data from win32
         wDC = win32gui.GetWindowDC(hwnd)
         dcObj=win32ui.CreateDCFromHandle(wDC)
@@ -144,3 +151,19 @@ def get_channels(img, led_layout):
     
     return rgbdict_to_channels(rgbdict)
 
+
+if __name__ == "__main__":
+    for i in range(50): # Loop 100 times for profiling
+        led_layout=[16,32,16] #Left, top, right
+        img = get_screen(hwnd, mode = 'pil')
+        colours = get_channels(img, led_layout)
+        
+    for i in range(50): # Loop 100 times for profiling
+        led_layout=[16,32,16] #Left, top, right
+        img = get_screen(hwnd, mode = 'mss')
+        colours = get_channels(img, led_layout)
+        
+    for i in range(50): # Loop 100 times for profiling
+        led_layout=[16,32,16] #Left, top, right
+        img = get_screen(hwnd, mode = 'win32')
+        colours = get_channels(img, led_layout)
