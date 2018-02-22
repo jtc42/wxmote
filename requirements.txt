@@ -1,0 +1,7 @@
+mote
+pypiwin32
+wmi
+psutil
+numpy
+pillow
+wxPython>=4
