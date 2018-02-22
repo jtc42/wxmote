@@ -2,13 +2,16 @@
 import numpy as np
 
 from PIL import Image
-from PIL import ImageGrab
+import os
 
-import mss
-
-import win32gui
-import win32ui 
-import win32con
+if os.name == 'nt':
+	OS_WIN = True
+	import win32gui
+	import win32ui 
+	import win32con
+else:
+	OS_WIN = False
+	import mss
 
 hwnd=win32gui.GetDesktopWindow() #Set current win32 window to whole desktop
 
@@ -30,17 +33,10 @@ def mesh(xy, span, step):
 
 
 ##Cinema functions
-def get_screen(hwnd, mode = 'win32'):
-
-    if mode == 'mss':
-        with mss.mss() as sct:
-            sct_img = sct.grab(sct.monitors[1])
-            im = Image.frombytes('RGB', sct_img.size, sct_img.rgb)
-
-    elif mode == 'pil': #If in PIL mode
-        im = ImageGrab.grab()
-        
-    elif mode == 'win32': # If in win32 mode
+def get_screen(hwnd):
+    global OS_WIN
+	
+    if OS_WIN:
         # Get bitmap data from win32
         wDC = win32gui.GetWindowDC(hwnd)
         dcObj=win32ui.CreateDCFromHandle(wDC)
@@ -73,7 +69,12 @@ def get_screen(hwnd, mode = 'win32'):
         cDC.DeleteDC()
         win32gui.ReleaseDC(hwnd, wDC)
         win32gui.DeleteObject(dataBitMap.GetHandle())
-    
+		
+    else:
+        with mss.mss() as sct:
+            sct_img = sct.grab(sct.monitors[1])
+            im = Image.frombytes('RGB', sct_img.size, sct_img.rgb)
+
     return im
 
 
