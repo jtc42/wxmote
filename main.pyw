@@ -20,12 +20,13 @@ import sysinfo
 
 """
 TODO: Shift global variables into a class.
-On startup, create class instance. That object gets passed to the 2 threads as
-an argument. Both threads then operate on that object to read/write variables.
 TODO: Fix cross-object referencing. For example, workerthread.event_cinema is
 referenced by drawthread, with 'workerthread' being implicitally global.
-If we instead use a Binder class to store both the "global" variables, and references
-to the worker and draw threads, this can be avoided.
+
+SOLUTION: DrawThread class takes a WorkerThread object as an argument, which is draws from.
+Worker variabled used to draw are obtained from the workerthread object (eg workerthread.monitordata)
+
+TODO: Convert all user options (currently global, and picked) into a global PREFS dictionary
 """
 
 
