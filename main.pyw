@@ -35,6 +35,7 @@ VersionID = "Version 3.20180223.2230"
 
 # System settings
 # TODO: Change modes to strings. Much clearer.
+# TODO: Move to global PREFS dictionary
 mode = 0 # 0=System, 1=Rainbow, 2=Cinema
 user_rgb = [0, 255, 0] #Default system RGB value
 
@@ -52,6 +53,7 @@ for file in mapfiles:
     maps.append( (nme, np.array(img).astype(int)) )
 
 # TODO: Refactor for more sensible names
+# TODO: Move to global PREFS dictionary
 monitorload = 1 # Pulse speed by CPU load
 monitortemp = 1 # Pulse colour by CPU temp
 monrefresh = 2 # Time between probing system
@@ -63,6 +65,7 @@ T_minmax = [30, 60] # Min and max CPU temperatures
            
 # Cinema mode settings
 # TODO: Refactor for more sensible names
+# TODO: Move to global PREFS dictionary
 n_avg = 10 # Number of frames to time-average
 col_timeavg = [] # Initial empty time average list
 cntrst=2.5 # Contrast factor
@@ -96,11 +99,11 @@ except (OSError, IOError) as e:
 
 ##Monitor Data
 # TODO: Monitor data to named dictionary
-monitordata = [0,0,0,0]
+monitordata = [0,0,0,0]  # TODO: Move to global PREFS dictionary
 mapstrings = [i[0] for i in maps] # List of names of gradients
 
 ## Cinema Data
-led_layout=[16,32,16] #Left, top, right
+led_layout=[16,32,16] #Left, top, right  # TODO: Move to global PREFS dictionary
 
 
 ###FUNCTIONS
@@ -149,14 +152,13 @@ class WorkThread:
     def main(self):
         #Monitor global variables
         # TODO: Try to shift out of global namespace and into object/functions
-        global monitordata
-        global monrefresh
-        global monitorload
-        global monitortemp
+        global monitordata  # TODO: Make class variable
+        global monrefresh  # TODO: Move to global PREFS dictionary
+        global monitorload  # TODO: Move to global PREFS dictionary
+        global monitortemp  # TODO: Move to global PREFS dictionary
         
         #Cinema global variables
-        global colours
-        global l_set, t_set, r_set
+        global colours  # TODO: Make class variable, rename (cinema_colour_data?)
         
         #Timing flags
         self.event_system.clear() # Event for first data acquisition
@@ -189,15 +191,21 @@ class WorkThread:
 ### DRAW THREAD ###
 class DrawThread:
     #Initial empty variables for system mode
-    rgbs = [[0,0,0]]*64
-    rgbs_old = [[0,0,0]]*64 # Last RGB data (used for monitoring if static colour should redraw, and if pulse should fade)
-    monitor_old=0 # Old CPU load
-    monitor_speed= 0 # Old pulse speed
+    rgbs = [[0,0,0]]*64   # TODO: Make class variable
 
-    
-    # TODO: Change to self.event_finished
-    event_finished=threading.Event() # Event for thread ending (used for program exit)
+    # Last RGB data (used for monitoring if static colour should redraw, and if pulse should fade)
+    rgbs_old = [[0,0,0]]*64   # TODO: Make class variable
 
+    # Old CPU load
+    monitor_old = 0   # TODO: Make class variable
+
+    # Old pulse speed
+    monitor_speed = 0   # TODO: Make class variable
+
+    # Event for thread ending (used for program exit)
+    event_finished = threading.Event()  # TODO: Make class variable
+
+    # TODO: Add an argument to attach a worker thread
     def __init__(self):
         self._running=False
     
@@ -205,7 +213,7 @@ class DrawThread:
     ##SYSTEM MONITOR FUNCTIONS
     
     def drawshotCPUPulse(self): #Draw a single shot in CPU pulse mode
-        global monitordata
+        global monitordata   # TODO: Get from attached worker thread 
     
         if self.monitor_old[1]!=monitordata[1]: #If load has changed
             self.monitor_speed= 0.042*monitordata[1] + 1.8 #Recalculate pulse speed
@@ -240,7 +248,7 @@ class DrawThread:
     ##THREAD FUNCTIONS    
     
     def stop(self): #Stop and clear
-        print("Worker thread (draw) stop initiated.")
+        print("Draw thread stop initiated.")
         self._running=False #Set terminate command
 
     def start(self): #Start and draw      
@@ -250,36 +258,38 @@ class DrawThread:
         thread1.start() #Start thread
         
     def main(self):
-        ##All user interaction is stored in global variables
-        global mode #Current tab
-        global user_rgb #Current custom RGB
+        #Current tab 
+        global mode  # TODO: Move to global PREFS dictionary
+        #Current custom RGB
+        global user_rgb  # TODO: Move to global PREFS dictionary
         
-        global monitorload, monitortemp #Boolean, monitor cpu or not
+        #Boolean, monitor cpu or not
+        global monitorload, monitortemp  # TODO: Move to global PREFS dictionary
         
-        global colours, col_timeavg, n_avg
-        global correction, brtns, cntrst
+        global colours, col_timeavg, n_avg  # TODO: Move to global PREFS dictionary
+        global correction, brtns, cntrst  # TODO: Move to global PREFS dictionary
         
-        ##All monitor data from other thread stored globally
-        global monitordata #Global variable containing all monitor data
-        ##All hidden variables (ie used in calculation) stored locally
+        global monitordata   # TODO: Get from attached worker thread 
 
         time.sleep(1) #Let data be collected initially
-        self.monitor_old=monitordata #Last monitor data set (used for monitoring if pulse rate should change)
-        self.monitor_speed= 0.042*monitordata[1] + 1.8
+        self.monitor_old = monitordata #Last monitor data set (used for monitoring if pulse rate should change)
+        self.monitor_speed = 0.042*monitordata[1] + 1.8
         
-        while self._running==True: #While terminate command not sent
+        while self._running == True: #While terminate command not sent
         
             ##IF ON MONITOR PAGE##
             if mode==0:
-                workthread.event_system.wait() #Wait for first data collection to complete
-                ##Update colours
-                if monitortemp==1: #If colour based on CPU temperature
+                # Wait for first data collection to complete
+                workthread.event_system.wait()  # TODO: Get from attached worker thread 
+
+                ## Update colours
+                if monitortemp: #If colour based on CPU temperature
                     self.rgbs=temp2rgbs(monitordata[0]) #Set local colour to calculated from global temperature
                 else:
                     self.rgbs=[user_rgb]*64 #Set local colour to global user-defined values
                 
                 ##Draw a shot based on animation mode
-                if monitorload==1: #If pulsing based on CPU load
+                if monitorload: #If pulsing based on CPU load
                     self.drawshotCPUPulse()
                 else: #If not pulsing
                     self.drawshotStatic()
@@ -414,6 +424,7 @@ class MyFrame(gui.MainFrame): #Instance of MainFrame class from 'gui'
         
         
     ###BINDING FUNCTIONS###
+    # TODO: Change all global variables to global PREFS dictionary
         
     #On about binding show About dialog
     def OnAbout(self,e): 
@@ -521,13 +532,13 @@ class App(wx.App):
 
 #Threads
 workthread=WorkThread()
-drawthread=DrawThread()
+drawthread=DrawThread() # Attach workthread as argument
 
 
 def main():
     app = App(False)
     workthread.start()
-    drawthread.start()
+    drawthread.start() 
     app.MainLoop()
 
 
