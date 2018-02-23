@@ -1,0 +1,14 @@
+name: base
+channels:
+  - defaults
+  - conda-forge
+dependencies:
+  - pillow
+  - numpy
+  - psutil
+  - pywin32
+  - pip
+  - pip:
+    - mote
+    - wxPython
+    - wmi
