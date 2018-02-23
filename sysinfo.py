@@ -1,24 +1,15 @@
 # -*- coding: utf-8 -*-
-"""
-Created on Wed Aug 10 09:46:09 2016
-
-@author: jtc9242
-"""
-
 import psutil
 import numpy as np
 import wmi
-
-#import pythoncom 
-
-# TODO: Refactor for more sensible names
-probeint=0.1 #Set time to probe CPU load over
-
-# Initial WMI assignment
-w = wmi.WMI(namespace="root\OpenHardwareMonitor")
+import pythoncom
 
 # TODO: Refactor for snake-case function names
-def getTemps(w):
+def getTemps():
+    pythoncom.CoInitialize()
+    # Connect to OpenHardwareMonitor
+    w = wmi.WMI(namespace="root\OpenHardwareMonitor")
+    
     names=[] #Clear core names
     temps=[] #Clear T data
     
@@ -35,17 +26,17 @@ def getTemps(w):
     return [names, temps] #Return names and temperatures
 
 
-def getInfo(w):
-    coreloads=psutil.cpu_percent(interval=probeint, percpu=True) #Get usage for each core
+def getInfo(interval=0.1):
+    coreloads=psutil.cpu_percent(interval=interval, percpu=True) #Get usage for each core
     cpuload=round(np.mean(coreloads),3) #Get CPU usage from mean of cores
     mem=psutil.virtual_memory() #Get RAM info
     ssd=psutil.disk_usage('/')[3] #Get boot drive load
-    cputemps=getTemps(w)[1] #Value at position 4 is the package temperature
+    cputemps=getTemps()[1] #Value at position 4 is the package temperature
     return [coreloads, cpuload, mem[2], ssd, cputemps]
 
 
-def getVals(w):
-    info = getInfo(w) #Get all sys info
+def getVals():
+    info = getInfo() #Get all sys info
     if not info[4]: #If temperature array is empty
         cputemp=0 #Log T as zero
     else:

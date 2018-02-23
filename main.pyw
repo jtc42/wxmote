@@ -1,28 +1,17 @@
 # -*- coding: utf-8 -*-
-"""
-Created on Wed Aug 10 12:05:09 2016
-
-@author: jtc9242
-"""
 
 import wx
 from wx import adv
+
 import threading
 import time
 import numpy as np
-
-import psutil
-import wmi
-import pythoncom
-
 from PIL import Image
-
 
 import glob
 import os
 
-
-#Custom modules
+# Local modules
 import gui
 import cinema
 import motecore
@@ -33,16 +22,20 @@ import sysinfo
 TODO: Shift global variables into a class.
 On startup, create class instance. That object gets passed to the 2 threads as
 an argument. Both threads then operate on that object to read/write variables.
-
+TODO: Fix cross-object referencing. For example, workerthread.event_cinema is
+referenced by drawthread, with 'workerthread' being implicitally global.
+If we instead use a Binder class to store both the "global" variables, and references
+to the worker and draw threads, this can be avoided.
 """
 
 
 ###SETTINGS
-VersionID = "Version 3.20170326.1200"
+VersionID = "Version 3.20180223.2230"
 
 # System settings
-mode=0 # 0=System, 1=Rainbow, 2=Cinema
-userrgb=[0,255,0] #Default system RGB value
+# TODO: Change modes to strings. Much clearer.
+mode = 0 # 0=System, 1=Rainbow, 2=Cinema
+user_rgb = [0, 255, 0] #Default system RGB value
 
 # Monitor mode settings
 
@@ -62,7 +55,7 @@ monitorload = 1 # Pulse speed by CPU load
 monitortemp = 1 # Pulse colour by CPU temp
 monrefresh = 2 # Time between probing system
 
-defaultgradient=0 # Default CPU temp gradient
+defaultgradient = 0 # Default CPU temp gradient
 
 T_minmax = [30, 60] # Min and max CPU temperatures
 
@@ -77,18 +70,18 @@ correction = [1.0,0.9,0.9]
 
 """
 All saved preferences:
-mode, userrgb, monitorload, monitortemp, defaultgradient, T_minmax, cntrst, brtns
+mode, user_rgb, monitorload, monitortemp, defaultgradient, T_minmax, cntrst, brtns
 """
 # TODO: Tidy up, fix line length
 import pickle
 
 def load_prefs():
-    global mode, userrgb, monitorload, monitortemp, defaultgradient, T_minmax, cntrst, brtns
-    mode, userrgb, monitorload, monitortemp, defaultgradient, T_minmax, cntrst, brtns = pickle.load(open("prefs.pickle", "rb"))
+    global mode, user_rgb, monitorload, monitortemp, defaultgradient, T_minmax, cntrst, brtns
+    mode, user_rgb, monitorload, monitortemp, defaultgradient, T_minmax, cntrst, brtns = pickle.load(open("prefs.pickle", "rb"))
 
 def save_prefs():
-    global mode, userrgb, monitorload, monitortemp, defaultgradient, T_minmax, cntrst, brtns
-    pickle.dump([mode, userrgb, monitorload, monitortemp, defaultgradient, T_minmax, cntrst, brtns], open("prefs.pickle", "wb"))
+    global mode, user_rgb, monitorload, monitortemp, defaultgradient, T_minmax, cntrst, brtns
+    pickle.dump([mode, user_rgb, monitorload, monitortemp, defaultgradient, T_minmax, cntrst, brtns], open("prefs.pickle", "wb"))
 
 try:
     print("Loading preferences...")
@@ -98,8 +91,6 @@ except (OSError, IOError) as e:
     save_prefs()
 
 
-
-
 ###DATA
 
 ##Monitor Data
@@ -107,11 +98,8 @@ except (OSError, IOError) as e:
 monitordata = [0,0,0,0]
 mapstrings = [i[0] for i in maps] # List of names of gradients
 
-              
 ## Cinema Data
 led_layout=[16,32,16] #Left, top, right
-
-
 
 
 ###FUNCTIONS
@@ -133,7 +121,6 @@ def temp2rgbs(T):
     return p[grad_id]
 
 
-
 ###THREADS
 
 ##WORKER THREAD##
@@ -143,15 +130,8 @@ class WorkThread:
     event_cinema=threading.Event() #Event flag for first cinema info call
     event_finished=threading.Event() #Event flag for worker thread finished
     
-    # TODO: Refactor for more sensible names
     def __init__(self):
         self._running=False
-
-    # TODO: Do something to replace this mess
-    def updateMonitor(self, w):
-        global monitordata
-        monitordata=sysinfo.getVals(w)
-        
 
     ##THREAD FUNCTIONS
     
@@ -167,7 +147,7 @@ class WorkThread:
         
     def main(self):
         #Monitor global variables
-        # TODO: Try to shift out of global namespace and into object/functions. After splitting functions into files.
+        # TODO: Try to shift out of global namespace and into object/functions
         global monitordata
         global monrefresh
         global monitorload
@@ -183,17 +163,11 @@ class WorkThread:
         self.event_finished.clear() # Event for thread ending (used for program exit)
         
         #Monitor startup
-        pythoncom.CoInitialize()
-        # TODO: Redefine sysinfo.w here (see launchpad script)
-        sysinfo.w = wmi.WMI(namespace="root\OpenHardwareMonitor")
-        
         while self._running==True: #While terminate command not sent
         
             if mode==0: #If in system mode
                 if monitorload==1 or monitortemp==1: #If monitoring either load or temperature
-                    #print "Monitor data updated"
-                    self.updateMonitor(sysinfo.w) #Update global monitor data
-                #print "Monitor thread pass"
+                    monitordata=sysinfo.getVals() #Update global monitor data
                 self.event_system.set()
                 time.sleep(monrefresh) #Rest for one monitor refresh period
                 
@@ -209,10 +183,6 @@ class WorkThread:
                 
         self.event_finished.set()
         print("Worker thread (monitor) main loop exited.")
-
-
-
-
 
 
 ### DRAW THREAD ###
@@ -281,7 +251,7 @@ class DrawThread:
     def main(self):
         ##All user interaction is stored in global variables
         global mode #Current tab
-        global userrgb #Current custom RGB
+        global user_rgb #Current custom RGB
         
         global monitorload, monitortemp #Boolean, monitor cpu or not
         
@@ -305,7 +275,7 @@ class DrawThread:
                 if monitortemp==1: #If colour based on CPU temperature
                     self.rgbs=temp2rgbs(monitordata[0]) #Set local colour to calculated from global temperature
                 else:
-                    self.rgbs=[userrgb]*64 #Set local colour to global user-defined values
+                    self.rgbs=[user_rgb]*64 #Set local colour to global user-defined values
                 
                 ##Draw a shot based on animation mode
                 if monitorload==1: #If pulsing based on CPU load
@@ -346,12 +316,6 @@ class DrawThread:
                 
         self.event_finished.set()
         print("Worker thread (draw) main loop exited.")
-
-
-
-
-
-
 
 
 
@@ -424,7 +388,7 @@ class MyFrame(gui.MainFrame): #Instance of MainFrame class from 'gui'
         
         ##SET MONITOR UI VALUES
         #Update colour picker default appearance and abled (overrides rainbow override)
-        self.pickerBaseColour.Colour = [userrgb[0],userrgb[1],userrgb[2],255]
+        self.pickerBaseColour.Colour = [user_rgb[0],user_rgb[1],user_rgb[2],255]
         if monitortemp==1:
             self.pickerBaseColour.Disable()
             print("Static picker disabled")
@@ -462,8 +426,8 @@ class MyFrame(gui.MainFrame): #Instance of MainFrame class from 'gui'
         self.cleanExit()  # Close the frame.    
         
     def OnColourChange(self,e): 
-        global userrgb
-        userrgb = self.pickerBaseColour.Colour[:3]
+        global user_rgb
+        user_rgb = self.pickerBaseColour.Colour[:3]
         save_prefs() #Update preferences file
         
     def onGradChoice(self,e):
@@ -546,12 +510,6 @@ class MyFrame(gui.MainFrame): #Instance of MainFrame class from 'gui'
         
 
 
-
-
-
-
-
-
 ###APP SETUP###
 
 class App(wx.App):
@@ -568,7 +526,6 @@ drawthread=DrawThread()
 def main():
     app = App(False)
     workthread.start()
-    #time.sleep(1)
     drawthread.start()
     app.MainLoop()
 
