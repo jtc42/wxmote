@@ -65,7 +65,7 @@ def gaussian(x, mu, sig):
 # MODE FUNCTIONS #
 def rainbow(speed=1):
     h = time.time() * 50 * speed
-         
+
     for pixel in range(N):
         hue = (h + (pixel * 4)) % 360
         rgb = [int(c * 255) for c in hsv_to_rgb(hue/360.0, 1.0, 1.0)]
@@ -91,7 +91,7 @@ def drawGradient(rgbs, target_rgbs):
 
         for pixel in range(N):
             smart_set(pixel, draw_rgbs[pixel])  # Set pixel on bottom
- 
+
         mote.show()  # Draw
 
 
@@ -117,7 +117,7 @@ def pulseShot(rgbs, target_rgbs, base=0.5, speed=1, phase=120):
         for pixel in range(N):  # For all pixels in one channel
 
             # Calculate angle
-            theta = (h + (pixel * 4) + phase) % 360  
+            theta = (h + (pixel * 4) + phase) % 360
 
             # Calculate brightness based on angle and base value
             scale = hsv_to_rgb(theta/360.0, 1.0, 1.0)[0] * (1.0 - base)
