@@ -63,7 +63,7 @@ PREFS = {
     'cinema_averages': 10,
     'cinema_contrast': 2.5,
     'cinema_brightness': 1.0,
-    'cinema_correction': [1.0, 0.9, 0.9],
+    'cinema_correction': [1.0, 0.8, 0.85],
 }
 
 
