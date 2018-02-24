@@ -3,6 +3,8 @@
 import wx
 from wx import adv
 
+import pickle
+
 import threading
 import time
 import numpy as np
@@ -18,74 +20,55 @@ import motecore
 import sysinfo
 
 
-"""
-TODO: Shift global variables into a class.
-TODO: Fix cross-object referencing. For example, workerthread.event_cinema is
-referenced by drawthread, with 'workerthread' being implicitally global.
+MODES = ['system', 'rainbow', 'cinema']
 
-SOLUTION: DrawThread class takes a WorkerThread object as an argument, which is draws from.
-Worker variabled used to draw are obtained from the workerthread object (eg workerthread.monitordata)
+# Convert between mode names and IDs
+def mode2int(mode):
+    global MODES
+    return MODES.index(mode)
 
-TODO: Convert all user options (currently global, and picked) into a global PREFS dictionary
-"""
+def int2mode(id):
+    global MODES
+    return MODES[id]
 
-
-###SETTINGS
-VersionID = "Version 3.20180223.2230"
-
-# System settings
-# TODO: Change modes to strings. Much clearer.
-# TODO: Move to global PREFS dictionary
-mode = 0 # 0=System, 1=Rainbow, 2=Cinema
-user_rgb = [0, 255, 0] #Default system RGB value
-
-# Monitor mode settings
 
 # Load gradient maps
 # TODO: Roll into function
 mapfiles = glob.glob('gradients/*.bmp')
 
-maps = []
+MAPS = []
 
 for file in mapfiles:
     img = Image.open(file)
     nme = os.path.basename(file)[:-4]
-    maps.append( (nme, np.array(img).astype(int)) )
+    MAPS.append( (nme, np.array(img).astype(int)) )
 
-# TODO: Refactor for more sensible names
-# TODO: Move to global PREFS dictionary
-monitorload = 1 # Pulse speed by CPU load
-monitortemp = 1 # Pulse colour by CPU temp
-monrefresh = 2 # Time between probing system
+###SETTINGS
+VersionID = "Version 3.20180223.2230"
 
-defaultgradient = 0 # Default CPU temp gradient
+PREFS = {
+    'led_layout': [16, 32, 16],
+    'mode': 'system',
+    'user_rgb': [0, 255, 0],
+    'monitor_load': True,
+    'monitor_temp': True,
+    'monitor_interval': 2,
+    'default_gradient': 0,
+    'T_minmax': [30, 60],
+    'cinema_averages': 10,
+    'cinema_contrast': 2.5,
+    'cinema_brightness': 1.0,
+    'cinema_correction': [1.0, 0.9, 0.9],
+}
 
-T_minmax = [30, 60] # Min and max CPU temperatures
-
-           
-# Cinema mode settings
-# TODO: Refactor for more sensible names
-# TODO: Move to global PREFS dictionary
-n_avg = 10 # Number of frames to time-average
-col_timeavg = [] # Initial empty time average list
-cntrst=2.5 # Contrast factor
-brtns = 1.0
-correction = [1.0,0.9,0.9]
-
-"""
-All saved preferences:
-mode, user_rgb, monitorload, monitortemp, defaultgradient, T_minmax, cntrst, brtns
-"""
-# TODO: Tidy up, fix line length
-import pickle
 
 def load_prefs():
-    global mode, user_rgb, monitorload, monitortemp, defaultgradient, T_minmax, cntrst, brtns
-    mode, user_rgb, monitorload, monitortemp, defaultgradient, T_minmax, cntrst, brtns = pickle.load(open("prefs.pickle", "rb"))
+    global PREFS
+    PREFS = pickle.load(open("prefs.pickle", "rb"))
 
 def save_prefs():
-    global mode, user_rgb, monitorload, monitortemp, defaultgradient, T_minmax, cntrst, brtns
-    pickle.dump([mode, user_rgb, monitorload, monitortemp, defaultgradient, T_minmax, cntrst, brtns], open("prefs.pickle", "wb"))
+    global PREFS
+    pickle.dump(PREFS, open("prefs.pickle", "wb"))
 
 try:
     print("Loading preferences...")
@@ -95,29 +78,17 @@ except (OSError, IOError) as e:
     save_prefs()
 
 
-###DATA
-
-##Monitor Data
-# TODO: Monitor data to named dictionary
-monitordata = [0,0,0,0]  # TODO: Move to global PREFS dictionary
-mapstrings = [i[0] for i in maps] # List of names of gradients
-
-## Cinema Data
-led_layout=[16,32,16] #Left, top, right  # TODO: Move to global PREFS dictionary
-
-
 ###FUNCTIONS
 
 ##Monitor Functions
 def temp2rgbs(T):
     # TODO: Refactor for more sensible names
-    global T_minmax
-    global defaultgradient
-    p = maps[defaultgradient][1] # Load in gradient from current default
+    global PREFS, MAPS
+    p = MAPS[PREFS['default_gradient']][1] # Load in gradient from current default
     
-    T = np.clip(T, T_minmax[0], T_minmax[1]-1) # Bound to range of temperatures
+    T = np.clip(T, PREFS['T_minmax'][0], PREFS['T_minmax'][1]-1) # Bound to range of temperatures
     
-    T_rel = (T-T_minmax[0])/(T_minmax[1]-T_minmax[0]) # Calculate 0-1 scalar of temperature
+    T_rel = (T - PREFS['T_minmax'][0])/(PREFS['T_minmax'][1] - PREFS['T_minmax'][0]) # Calculate 0-1 scalar of temperature
     n_grads = np.shape(p)[0] # Number of temperature-based gradients in map
     
     grad_id = int(T_rel*n_grads) # Calculate ID of gradient to be used
@@ -130,12 +101,15 @@ def temp2rgbs(T):
 ##WORKER THREAD##
 class WorkThread:
     
-    event_system=threading.Event() #Event flag for first system info call
-    event_cinema=threading.Event() #Event flag for first cinema info call
-    event_finished=threading.Event() #Event flag for worker thread finished
-    
     def __init__(self):
-        self._running=False
+        self._running = False
+
+        # TODO: Monitor data to named dictionary
+        self.monitor_data = [0, 0, 0, 0] 
+
+        self.event_system = threading.Event() #Event flag for first system info call
+        self.event_cinema = threading.Event() #Event flag for first cinema info call
+        self.event_finished = threading.Event() #Event flag for worker thread finished
 
     ##THREAD FUNCTIONS
     
@@ -150,16 +124,7 @@ class WorkThread:
         thread1.start() #Start thread
         
     def main(self):
-        #Monitor global variables
-        # TODO: Try to shift out of global namespace and into object/functions
-        global monitordata  # TODO: Make class variable
-        global monrefresh  # TODO: Move to global PREFS dictionary
-        global monitorload  # TODO: Move to global PREFS dictionary
-        global monitortemp  # TODO: Move to global PREFS dictionary
-        
-        #Cinema global variables
-        global colours  # TODO: Make class variable, rename (cinema_colour_data?)
-        
+
         #Timing flags
         self.event_system.clear() # Event for first data acquisition
         self.event_cinema.clear() # Event for first data acquisition
@@ -168,20 +133,25 @@ class WorkThread:
         #Monitor startup
         while self._running==True: #While terminate command not sent
         
-            if mode==0: #If in system mode
-                if monitorload==1 or monitortemp==1: #If monitoring either load or temperature
-                    monitordata=sysinfo.getVals() #Update global monitor data
-                self.event_system.set()
-                time.sleep(monrefresh) #Rest for one monitor refresh period
+            if PREFS['mode'] == 'system': #If in system mode
+                if PREFS['monitor_load'] or PREFS['monitor_temp']:  # If monitoring either load or temperature
+                    self.monitor_data = sysinfo.getVals()
                 
-            elif mode==2: #If in cinema mode
+                #Set flag for first acquisition
+                if not self.event_system.is_set():
+                    self.event_system.set()
+
+                time.sleep(PREFS['monitor_interval'])  # Rest for one monitor refresh period
+                
+            elif PREFS['mode'] == 'cinema': #If in cinema mode
                 img = cinema.get_screen(cinema.hwnd)
                 
                 #Convert colour data to Mote data
-                colours = cinema.get_channels(img, led_layout)
+                self.cinema_colour_data = cinema.get_channels(img, PREFS['led_layout'])
                 
                 #Set flag for first acquisition
-                self.event_cinema.set()
+                if not self.event_cinema.is_set():
+                    self.event_cinema.set()
                 
                 
         self.event_finished.set()
@@ -190,34 +160,33 @@ class WorkThread:
 
 ### DRAW THREAD ###
 class DrawThread:
-    #Initial empty variables for system mode
-    rgbs = [[0,0,0]]*64   # TODO: Make class variable
 
-    # Last RGB data (used for monitoring if static colour should redraw, and if pulse should fade)
-    rgbs_old = [[0,0,0]]*64   # TODO: Make class variable
-
-    # Old CPU load
-    monitor_old = 0   # TODO: Make class variable
-
-    # Old pulse speed
-    monitor_speed = 0   # TODO: Make class variable
-
-    # Event for thread ending (used for program exit)
-    event_finished = threading.Event()  # TODO: Make class variable
 
     # TODO: Add an argument to attach a worker thread
-    def __init__(self):
-        self._running=False
+    def __init__(self, attached_worker):
+        self._running = False
+        self.attached_worker = attached_worker
+
+        # TODO: Tidy up. Can some of these be private to the associated class method?
+        #Initial empty variables for system mode
+        self.rgbs = [[0,0,0]]*64
+        # Last RGB data (used for monitoring if static colour should redraw, and if pulse should fade)
+        self.rgbs_old = [[0,0,0]]*64 
+        # Old CPU load
+        self.monitor_old = 0
+        # Old pulse speed
+        self.monitor_speed = 0 
+        # Event for thread ending (used for program exit)
+        self.event_finished = threading.Event()
     
     
     ##SYSTEM MONITOR FUNCTIONS
     
     def drawshotCPUPulse(self): #Draw a single shot in CPU pulse mode
-        global monitordata   # TODO: Get from attached worker thread 
     
-        if self.monitor_old[1]!=monitordata[1]: #If load has changed
-            self.monitor_speed= 0.042*monitordata[1] + 1.8 #Recalculate pulse speed
-            self.monitor_old=monitordata #Update 'monitorold' for future comparisons
+        if self.monitor_old[1] != self.attached_worker.monitor_data[1]: #If load has changed
+            self.monitor_speed= 0.042*self.attached_worker.monitor_data[1] + 1.8 #Recalculate pulse speed
+            self.monitor_old=self.attached_worker.monitor_data #Update 'monitorold' for future comparisons
            
         motecore.pulseShot(self.rgbs_old, self.rgbs, base=0.7, speed=self.monitor_speed) #Draw a pulse cycle
         self.rgbs_old=self.rgbs #Update 'rgbold' for future comparisons
@@ -258,68 +227,61 @@ class DrawThread:
         thread1.start() #Start thread
         
     def main(self):
-        #Current tab 
-        global mode  # TODO: Move to global PREFS dictionary
-        #Current custom RGB
-        global user_rgb  # TODO: Move to global PREFS dictionary
-        
-        #Boolean, monitor cpu or not
-        global monitorload, monitortemp  # TODO: Move to global PREFS dictionary
-        
-        global colours, col_timeavg, n_avg  # TODO: Move to global PREFS dictionary
-        global correction, brtns, cntrst  # TODO: Move to global PREFS dictionary
-        
-        global monitordata   # TODO: Get from attached worker thread 
 
-        time.sleep(1) #Let data be collected initially
-        self.monitor_old = monitordata #Last monitor data set (used for monitoring if pulse rate should change)
-        self.monitor_speed = 0.042*monitordata[1] + 1.8
+        self.monitor_old = self.attached_worker.monitor_data #Last monitor data set (used for monitoring if pulse rate should change)
+        self.monitor_speed = 0.042*self.attached_worker.monitor_data[1] + 1.8
+
+        self.col_timeavg = []
         
         while self._running == True: #While terminate command not sent
         
             ##IF ON MONITOR PAGE##
-            if mode==0:
-                # Wait for first data collection to complete
-                workthread.event_system.wait()  # TODO: Get from attached worker thread 
+            if PREFS['mode'] == 'system':
+                # Wait for first acquisition on worker thread, by listening for flag
+                self.attached_worker.event_system.wait() 
 
                 ## Update colours
-                if monitortemp: #If colour based on CPU temperature
-                    self.rgbs=temp2rgbs(monitordata[0]) #Set local colour to calculated from global temperature
+                if PREFS['monitor_temp']: #If colour based on CPU temperature
+                    self.rgbs = temp2rgbs(self.attached_worker.monitor_data[0])  # Set local colour to calculated from global temperature
                 else:
-                    self.rgbs=[user_rgb]*64 #Set local colour to global user-defined values
+                    self.rgbs = [PREFS['user_rgb']]*64  # Set local colour to global user-defined values
                 
                 ##Draw a shot based on animation mode
-                if monitorload: #If pulsing based on CPU load
+                if PREFS['monitor_load']: #If pulsing based on CPU load
                     self.drawshotCPUPulse()
                 else: #If not pulsing
                     self.drawshotStatic()
                     
             
             ## IF ON RAINBOW PAGE##
-            elif mode==1: #If rainbow
+            elif PREFS['mode'] == 'rainbow': #If rainbow
                 motecore.rainbow(speed=1) #Draw a frame of rainbow
                 
                 
-            elif mode==2: #If in cinema mode
-                workthread.event_cinema.wait() # Wait for first acquisition on worker thread, by listening for flag
-                time.sleep(1.0/240) #Lock at 120fps ish
+            elif PREFS['mode'] == 'cinema': #If in cinema mode
 
-                col_timeavg.insert(0,colours)
+                # Wait for first acquisition on worker thread, by listening for flag
+                self.attached_worker.event_cinema.wait() 
+
+                # Lock at 120fps ish
+                time.sleep(1.0/240)
+
+                self.col_timeavg.insert(0, self.attached_worker.cinema_colour_data)
                 
-                if len(col_timeavg)>=n_avg:
-                    del col_timeavg[-1]
+                if len(self.col_timeavg) >= PREFS['cinema_averages']:
+                    del self.col_timeavg[-1]
                     
                 
                 #Draw to Mote
-
                 for px in range(64):
-                    r=int(np.mean([frame[px][0] for frame in col_timeavg]) *correction[0] *brtns)
-                    g=int(np.mean([frame[px][1] for frame in col_timeavg]) *correction[1] *brtns)
-                    b=int(np.mean([frame[px][2] for frame in col_timeavg]) *correction[2] *brtns)
+                    # TODO: Tidy this bit
+                    r=int(np.mean([frame[px][0] for frame in self.col_timeavg]) *PREFS['cinema_correction'][0] *PREFS['cinema_brightness'])
+                    g=int(np.mean([frame[px][1] for frame in self.col_timeavg]) *PREFS['cinema_correction'][1] *PREFS['cinema_brightness'])
+                    b=int(np.mean([frame[px][2] for frame in self.col_timeavg]) *PREFS['cinema_correction'][2] *PREFS['cinema_brightness'])
                     
-                    r=self.contrast(r,cntrst)
-                    g=self.contrast(g,cntrst)
-                    b=self.contrast(b,cntrst)
+                    r=self.contrast(r,PREFS['cinema_contrast'])
+                    g=self.contrast(g,PREFS['cinema_contrast'])
+                    b=self.contrast(b,PREFS['cinema_contrast'])
                 
                     motecore.smart_set(px, [r,g,b])
                 
@@ -386,6 +348,7 @@ class MyFrame(gui.MainFrame): #Instance of MainFrame class from 'gui'
     ###SETUP###
 
     def __init__(self, parent): 
+        global PREFS, MAPS
         #Initialize from 'gui' MainFrame
         gui.MainFrame.__init__(self, parent)
         #Create taskbar icon
@@ -395,31 +358,31 @@ class MyFrame(gui.MainFrame): #Instance of MainFrame class from 'gui'
         
         ##SET GLOBAL UI VALUES
         #Set current tab to default mode
-        self.notebookMain.SetSelection(mode)
+        self.notebookMain.SetSelection(mode2int(PREFS['mode']))
         
         ##SET MONITOR UI VALUES
         #Update colour picker default appearance and abled (overrides rainbow override)
-        self.pickerBaseColour.Colour = [user_rgb[0],user_rgb[1],user_rgb[2],255]
-        if monitortemp==1:
+        self.pickerBaseColour.Colour = [*PREFS['user_rgb'], 255]
+        if PREFS['monitor_temp'] == True:
             self.pickerBaseColour.Disable()
             print("Static picker disabled")
             
         #Populate gradient choice options and select default
-        self.menuGradChoice.SetItems(mapstrings)
-        self.menuGradChoice.SetSelection(defaultgradient)
+        self.menuGradChoice.SetItems([i[0] for i in MAPS])   # List of names of gradients
+        self.menuGradChoice.SetSelection(PREFS['default_gradient'])
         
         #Populate T boxes
-        self.spinTmin.SetValue(T_minmax[0])
-        self.spinTmax.SetValue(T_minmax[1])
+        self.spinTmin.SetValue(PREFS['T_minmax'][0])
+        self.spinTmax.SetValue(PREFS['T_minmax'][1])
         
         #Update monitor T check box
-        self.checkMonitorTemp.SetValue(monitortemp)
+        self.checkMonitorTemp.SetValue(PREFS['monitor_temp'])
         #Update monitor load check box
-        self.checkMonitorLoad.SetValue(monitorload)
+        self.checkMonitorLoad.SetValue(PREFS['monitor_load'])
         
         ##SET CINEMA UI VALUES
-        self.sliderContrast.SetValue(int(10*cntrst))
-        self.sliderBrightness.SetValue(int(100*brtns))
+        self.sliderContrast.SetValue(int(10*PREFS['cinema_contrast']))
+        self.sliderBrightness.SetValue(int(100*PREFS['cinema_brightness']))
         
         
         
@@ -438,58 +401,53 @@ class MyFrame(gui.MainFrame): #Instance of MainFrame class from 'gui'
         self.cleanExit()  # Close the frame.    
         
     def OnColourChange(self,e): 
-        global user_rgb
-        user_rgb = self.pickerBaseColour.Colour[:3]
+        global PREFS
+        PREFS['user_rgb'] = self.pickerBaseColour.Colour[:3]
         save_prefs() #Update preferences file
         
     def onGradChoice(self,e):
-        global defaultgradient
-        selected = self.menuGradChoice.GetSelection()
-        print("Gradient selected: {}".format(selected))
-        print("Updating preferences...")
-        defaultgradient=selected
+        global PREFS
+        PREFS['default_gradient'] = self.menuGradChoice.GetSelection()
         save_prefs() #Update preferences file
         
     def OnMonitorTempChange(self,e): 
-        global monitortemp
-        monitortemp = self.checkMonitorTemp.IsChecked()
-        if monitortemp==0:
-            self.menuGradChoice.Disable()
-            self.pickerBaseColour.Enable()
-        else:
+        global PREFS
+        PREFS['monitor_temp'] = self.checkMonitorTemp.IsChecked()
+        if PREFS['monitor_temp'] == True:
             self.menuGradChoice.Enable()
             self.pickerBaseColour.Disable()
+        else:
+            self.menuGradChoice.Disable()
+            self.pickerBaseColour.Enable()
         save_prefs() #Update preferences file
     
     def onTchange(self,e):
-        global T_minmax
-        T_minmax = [self.spinTmin.GetValue(), self.spinTmax.GetValue()]
+        global PREFS
+        PREFS['T_minmax'] = [self.spinTmin.GetValue(), self.spinTmax.GetValue()]
         save_prefs() #Update preferences file
         
     def OnMonitorLoadChange(self,e): 
-        global monitorload
-        monitorload = self.checkMonitorLoad.IsChecked()
+        global PREFS
+        PREFS['monitor_load'] = self.checkMonitorLoad.IsChecked()
         save_prefs() #Update preferences file
         
     def onContrastChange(self,e):
-        global cntrst
-        cntrst = self.sliderContrast.GetValue()/10.0
+        global PREFS
+        PREFS['cinema_contrast'] = self.sliderContrast.GetValue()/10.0
         save_prefs() #Update preferences file
     
     def onBrightnessChange(self,e):
-        global brtns
-        brtns = self.sliderBrightness.GetValue()/100.0
+        global PREFS
+        PREFS['cinema_brightness'] = self.sliderBrightness.GetValue()/100.0
         save_prefs() #Update preferences file
     
     def onNotebookChange(self,e): #If tab changes
-        global mode
-        mode=self.notebookMain.GetSelection()
-        print(mode) #Print tab ID
+        global PREFS
+        PREFS['mode'] = int2mode(self.notebookMain.GetSelection())
         save_prefs() #Update preferences file
     
     
-    
-    
+
         
     ###CUSTOM CLOSE AND EXIT FUNCTIONS###
         
@@ -497,21 +455,21 @@ class MyFrame(gui.MainFrame): #Instance of MainFrame class from 'gui'
     def onClose(self, evt): 
         print("Custom close override started")
         self.Hide()
-    #Clean exit sequence to be called by either icon Exit or menu Exit       
-        
+
+
+    #Clean exit sequence, to be called by either icon Exit or menu Exit        
     def cleanExit(self): 
         print("Clean exiting...")
-        #Run clean exit functions for closing threads etc
-        #This will likely be a global function that cleans up all threads and runs as part of this cleanExit
-        #SAVE SETTINGS
         print("Saving preferences...")
         save_prefs() #Update preferences file
+
         #STOP THREADS
         workthread.stop()
         workthread.event_finished.wait()
         drawthread.stop()
         drawthread.event_finished.wait()
         motecore.clearAll()
+
         #CLOSE UI
         print("Removing taskbar icon...")
         self.taskbarIcon.RemoveIcon()
@@ -530,9 +488,10 @@ class App(wx.App):
         self.SetTopWindow(frame)
         return True
 
-#Threads
+
+# Create thread objects
 workthread=WorkThread()
-drawthread=DrawThread() # Attach workthread as argument
+drawthread=DrawThread(workthread)
 
 
 def main():
