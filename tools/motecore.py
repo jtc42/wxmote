@@ -38,20 +38,21 @@ def clearAll():
 
 clearAll()
 
+
 # START SET PIXEL # 
 def smart_set(pixel, rgb):
     global display_mode
     # Natural position with no modifiers
-    ch = pixel//16 +1
-    px = pixel%16
-    
+    ch = pixel//16 + 1
+    px = pixel % 16
+
     rgb = [int(c) for c in rgb]
-    
-    #Apply modifiers
+
+    # Apply modifiers
     if display_mode:
         if ch == 3 or ch == 4:  # If top right or right sticks
             px = 15-px  # Flip pixels due to bar orientation
-    
+
     # Send to mote
     mote.set_pixel(ch, px, *rgb)
 
@@ -64,7 +65,7 @@ def gaussian(x, mu, sig):
 # MODE FUNCTIONS #
 def rainbow(speed=1):
     h = time.time() * 50 * speed
-                 
+         
     for pixel in range(N):
         hue = (h + (pixel * 4)) % 360
         rgb = [int(c * 255) for c in hsv_to_rgb(hue/360.0, 1.0, 1.0)]
@@ -76,46 +77,57 @@ def rainbow(speed=1):
 
 
 def drawGradient(rgbs, target_rgbs):
-    t_init = time.time() # Get start time
-    
-    deltas = [np.subtract(target_rgbs[i], rgbs[i]) for i,_ in enumerate(rgbs)]  # Calculate change over the course of one pulse
+    t_init = time.time()  # Get start time
+
+    # Calculate change over the course of one pulse
+    deltas = [np.subtract(target_rgbs[i], rgbs[i]) for i, _ in enumerate(rgbs)]
 
     while time.time()-t_init < 2:
-        t = (time.time()-t_init)/2 # Calculate a scale from time throughout fade
-        draw_rgbs = [np.add(rgbs[i], t*deltas[i]) for i,_ in enumerate(rgbs)] # Calculate RGBs from colour fade
+        # Calculate a scale from time throughout fade
+        t = (time.time()-t_init) / 2 
+
+        # Calculate RGBs from colour fade
+        draw_rgbs = [np.add(rgbs[i], t*deltas[i]) for i, _ in enumerate(rgbs)]
 
         for pixel in range(N):
             smart_set(pixel, draw_rgbs[pixel])  # Set pixel on bottom
-            
+ 
         mote.show()  # Draw
 
 
 def pulseShot(rgbs, target_rgbs, base=0.5, speed=1, phase=120):
     """
-    rgbs and target_rgbs are a 64 long array of [r,g,b] lists, corresponding to the 64 LEDs
+    rgbs and target_rgbs are a 64 long array of [r,g,b] lists,
+    corresponding to the 64 LEDs
     """
-    
+
     t_init = time.time()
     h = (time.time()-t_init) * 50 * speed + 360
-        
-    deltas = [np.subtract(target_rgbs[i], rgbs[i]) for i,_ in enumerate(rgbs)]  # Calculate change over the course of one pulse
-    
+
+    # Calculate change over the course of one pulse
+    deltas = [np.subtract(target_rgbs[i], rgbs[i]) for i, _ in enumerate(rgbs)]
+
     while h < 720:  # Stop pulse after 1 cycle
-    
-        t = (h % 360)/360  # Calculate a scale from time throughout pulse
-        
-        draw_rgbs = [np.add(rgbs[i], t*deltas[i]) for i,_ in enumerate(rgbs)] # Calculate RGBs from colour fade
+
+        # Calculate a scale from time throughout pulse
+        t = (h % 360)/360
+        # Calculate RGBs from colour fade
+        draw_rgbs = [np.add(rgbs[i], t*deltas[i]) for i, _ in enumerate(rgbs)]
 
         for pixel in range(N):  # For all pixels in one channel
-        
-            theta = (h + (pixel * 4) + phase) % 360  # Calculate angle
-            scale = hsv_to_rgb(theta/360.0, 1.0, 1.0)[0] * (1.0 - base)  # Calculate brightness based on angle and base value
-                              
-            rgb = [ int(col*scale + col*base) for col in draw_rgbs[pixel] ]  # Calculate rgb values for pixel
+
+            # Calculate angle
+            theta = (h + (pixel * 4) + phase) % 360  
+
+            # Calculate brightness based on angle and base value
+            scale = hsv_to_rgb(theta/360.0, 1.0, 1.0)[0] * (1.0 - base)
+
+            # Calculate rgb values for pixel
+            rgb = [int(col*scale + col*base) for col in draw_rgbs[pixel]]
 
             smart_set(pixel, rgb)  # Set pixel on bottom
 
-                
         mote.show()  # Draw
         time.sleep(0.03)  # Rest
-        h = (time.time()-t_init) * 50 * speed +360  # Calculate h based on new time
+        # Calculate h based on new time
+        h = (time.time()-t_init) * 50 * speed + 360
