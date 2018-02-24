@@ -12,12 +12,14 @@ from PIL import Image
 
 import glob
 import os
+from copy import copy
 
 # Local modules
 import gui
-import cinema
-import motecore
-import sysinfo
+from tools import cinema
+from tools import motecore
+from tools import sysinfo
+from tools import contrast
 
 
 MODES = ['system', 'rainbow', 'cinema']
@@ -33,15 +35,17 @@ def int2mode(id):
 
 
 # Load gradient maps
-# TODO: Roll into function
-mapfiles = glob.glob('gradients/*.bmp')
 
-MAPS = []
+def get_maps(reg_expression):
+    mapfiles = glob.glob(reg_expression)
+    maps = []
+    for file in mapfiles:
+        img = Image.open(file)
+        nme = os.path.basename(file).split(".")[0]
+        maps.append( (nme, np.array(img).astype(int)) )
+    return maps
 
-for file in mapfiles:
-    img = Image.open(file)
-    nme = os.path.basename(file)[:-4]
-    MAPS.append( (nme, np.array(img).astype(int)) )
+MAPS = get_maps('gradients/*.bmp')
 
 ###SETTINGS
 VersionID = "Version 3.20180223.2230"
@@ -78,29 +82,8 @@ except (OSError, IOError) as e:
     save_prefs()
 
 
-###FUNCTIONS
-
-##Monitor Functions
-def temp2rgbs(T):
-    # TODO: Refactor for more sensible names
-    global PREFS, MAPS
-    p = MAPS[PREFS['default_gradient']][1] # Load in gradient from current default
-    
-    T = np.clip(T, PREFS['T_minmax'][0], PREFS['T_minmax'][1]-1) # Bound to range of temperatures
-    
-    T_rel = (T - PREFS['T_minmax'][0])/(PREFS['T_minmax'][1] - PREFS['T_minmax'][0]) # Calculate 0-1 scalar of temperature
-    n_grads = np.shape(p)[0] # Number of temperature-based gradients in map
-    
-    grad_id = int(T_rel*n_grads) # Calculate ID of gradient to be used
-    
-    return p[grad_id]
-
-
-###THREADS
-
 ##WORKER THREAD##
 class WorkThread:
-    
     def __init__(self):
         self._running = False
 
@@ -160,79 +143,75 @@ class WorkThread:
 
 ### DRAW THREAD ###
 class DrawThread:
-
-
-    # TODO: Add an argument to attach a worker thread
     def __init__(self, attached_worker):
         self._running = False
         self.attached_worker = attached_worker
 
-        # TODO: Tidy up. Can some of these be private to the associated class method?
-        #Initial empty variables for system mode
-        self.rgbs = [[0,0,0]]*64
+        #Initial array of RGB values
+        self.rgbs = [[0,0,0]] * sum(PREFS['led_layout'])
         # Last RGB data (used for monitoring if static colour should redraw, and if pulse should fade)
-        self.rgbs_old = [[0,0,0]]*64 
-        # Old CPU load
-        self.monitor_old = 0
-        # Old pulse speed
-        self.monitor_speed = 0 
+        self.rgbs_old = [[0,0,0]] * sum(PREFS['led_layout'])
+        # Initial CPU load
+        self.monitor_old = self.attached_worker.monitor_data 
+        # Initial pulse speed
+        self.pulse_speed = 0.042*self.attached_worker.monitor_data[1] + 1.8
+        # Array to store cinema data used in time averaging
+        self.cinema_timeavg = []
         # Event for thread ending (used for program exit)
         self.event_finished = threading.Event()
     
     
-    ##SYSTEM MONITOR FUNCTIONS
+    # SYSTEM MONITOR FUNCTIONS
+    # Convert system temperature into RGB array, from MAP
+    def temp2rgbs(self, temp):
+        global PREFS, MAPS
+
+        # Load in gradient from current default
+        p = MAPS[PREFS['default_gradient']][1] 
+        # Bound to range of temperatures
+        temp = np.clip(temp, PREFS['T_minmax'][0], PREFS['T_minmax'][1]-1) 
+        # Calculate 0-1 scalar of temperature
+        temp_rel = (temp - PREFS['T_minmax'][0])/(PREFS['T_minmax'][1] - PREFS['T_minmax'][0]) 
+        # Number of temperature-based gradients in map
+        n_grads = np.shape(p)[0] 
+        # Calculate ID of gradient to be used
+        grad_id = int(temp_rel*n_grads) 
+        
+        return p[grad_id]
     
-    def drawshotCPUPulse(self): #Draw a single shot in CPU pulse mode
-    
-        if self.monitor_old[1] != self.attached_worker.monitor_data[1]: #If load has changed
-            self.monitor_speed= 0.042*self.attached_worker.monitor_data[1] + 1.8 #Recalculate pulse speed
-            self.monitor_old=self.attached_worker.monitor_data #Update 'monitorold' for future comparisons
+
+    # Draw a single shot in CPU pulse mode
+    def drawshotCPUPulse(self): 
+        if self.monitor_old[1] != self.attached_worker.monitor_data[1]:  # If load has changed
+            self.pulse_speed = 0.042*self.attached_worker.monitor_data[1] + 1.8  # Recalculate pulse speed
+            self.monitor_old = self.attached_worker.monitor_data  # Update 'monitorold' for future comparisons
            
-        motecore.pulseShot(self.rgbs_old, self.rgbs, base=0.7, speed=self.monitor_speed) #Draw a pulse cycle
-        self.rgbs_old=self.rgbs #Update 'rgbold' for future comparisons
+        motecore.pulseShot(self.rgbs_old, self.rgbs, base=0.7, speed=self.pulse_speed)  # Draw a pulse cycle
+        self.rgbs_old=self.rgbs  # Update 'rgbold' for future comparisons
     
-    def drawshotStatic(self): #Draw a single shot of static colour (ie includes fades when RGB is changed)
+
+    # Draw a single shot of static colour (ie includes fades when RGB is changed)
+    def drawshotStatic(self): 
         motecore.drawGradient(self.rgbs_old, self.rgbs)
-        self.rgbs_old=self.rgbs #Update 'rgbold' for future comparisons
+        self.rgbs_old=self.rgbs  # Update 'rgbold' for future comparisons
     
-    
-    ##CINEMA MODE FUNCTIONS
-    def c_fn(self,x,n):
-        val=x**n
-        factor=0.5/(0.5**n)
-        
-        return factor*val
-    
-    def contrast(self,val,n):
-        val=val/255.0
-        
-        if val<0.5:
-            val=self.c_fn(val,n)
-        else:
-            val=1- self.c_fn(1-val,n)
-        
-        return int(val*255)
-    
-    
+
     ##THREAD FUNCTIONS    
     
     def stop(self): #Stop and clear
         print("Draw thread stop initiated.")
-        self._running=False #Set terminate command
+        self._running = False #Set terminate command
+
 
     def start(self): #Start and draw      
-        self._running=True #Set start command
-        thread1=threading.Thread(target=self.main) #Define thread
-        thread1.daemon=True #Stop this thread when main thread closes
+        self._running = True #Set start command
+        thread1 = threading.Thread(target=self.main) #Define thread
+        thread1.daemon = True #Stop this thread when main thread closes
         thread1.start() #Start thread
         
+
     def main(self):
 
-        self.monitor_old = self.attached_worker.monitor_data #Last monitor data set (used for monitoring if pulse rate should change)
-        self.monitor_speed = 0.042*self.attached_worker.monitor_data[1] + 1.8
-
-        self.col_timeavg = []
-        
         while self._running == True: #While terminate command not sent
         
             ##IF ON MONITOR PAGE##
@@ -242,9 +221,10 @@ class DrawThread:
 
                 ## Update colours
                 if PREFS['monitor_temp']: #If colour based on CPU temperature
-                    self.rgbs = temp2rgbs(self.attached_worker.monitor_data[0])  # Set local colour to calculated from global temperature
+                    # Set local colour to calculated from global temperature
+                    self.rgbs = self.temp2rgbs(self.attached_worker.monitor_data[0]) 
                 else:
-                    self.rgbs = [PREFS['user_rgb']]*64  # Set local colour to global user-defined values
+                    self.rgbs = [PREFS['user_rgb']] * sum(PREFS['led_layout'])  # Set local colour to global user-defined values
                 
                 ##Draw a shot based on animation mode
                 if PREFS['monitor_load']: #If pulsing based on CPU load
@@ -266,24 +246,24 @@ class DrawThread:
                 # Lock at 120fps ish
                 time.sleep(1.0/240)
 
-                self.col_timeavg.insert(0, self.attached_worker.cinema_colour_data)
+                self.cinema_timeavg.insert(0, self.attached_worker.cinema_colour_data)
                 
-                if len(self.col_timeavg) >= PREFS['cinema_averages']:
-                    del self.col_timeavg[-1]
+                if len(self.cinema_timeavg) >= PREFS['cinema_averages']:
+                    del self.cinema_timeavg[-1]
                     
                 
                 #Draw to Mote
-                for px in range(64):
-                    # TODO: Tidy this bit
-                    r=int(np.mean([frame[px][0] for frame in self.col_timeavg]) *PREFS['cinema_correction'][0] *PREFS['cinema_brightness'])
-                    g=int(np.mean([frame[px][1] for frame in self.col_timeavg]) *PREFS['cinema_correction'][1] *PREFS['cinema_brightness'])
-                    b=int(np.mean([frame[px][2] for frame in self.col_timeavg]) *PREFS['cinema_correction'][2] *PREFS['cinema_brightness'])
-                    
-                    r=self.contrast(r,PREFS['cinema_contrast'])
-                    g=self.contrast(g,PREFS['cinema_contrast'])
-                    b=self.contrast(b,PREFS['cinema_contrast'])
-                
-                    motecore.smart_set(px, [r,g,b])
+                for px in range(sum(PREFS['led_layout'])):
+
+                    #rgb = [np.mean([frame[px][i] for frame in self.cinema_timeavg]) for i in range(3)]
+
+                    rgb = np.mean([frame[px] for frame in self.cinema_timeavg], axis=0)
+
+                    rgb = np.multiply(rgb, PREFS['cinema_correction'])
+                    rgb = np.multiply(rgb, PREFS['cinema_brightness'])
+                    rgb = contrast.apply_contrast(rgb, PREFS['cinema_contrast'])
+
+                    motecore.smart_set(px, rgb)
                 
                 motecore.mote.show()    
                 

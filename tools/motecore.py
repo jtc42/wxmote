@@ -15,8 +15,6 @@ mote.configure_channel(4, 16, False)
 
 N = 64
 
-tst = 1/30.0
-
 # CORE SETTINGS #
 display_mode = True
 
