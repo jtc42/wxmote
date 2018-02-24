@@ -5,13 +5,17 @@ A demo of the various modes can be seen [here](https://twitter.com/jtc9242/statu
 
 ## Requirements
 * Python 3 (should run on Python 2.7, but not tested)
-* [PyWin32](https://pypi.python.org/pypi/pypiwin32)
-* [WxPython Phoenix](https://wiki.wxpython.org/ProjectPhoenix)
+* [WxPython >= 4](https://pypi.python.org/pypi/wxPython)
 * [Mote](https://github.com/pimoroni/mote)
+* [Numpy](http://www.numpy.org/)
+* [Pillow](https://pypi.python.org/pypi/Pillow)
+### Windows
+* [PyWin32](https://pypi.python.org/pypi/pypiwin32)
+* [WMI](https://pypi.python.org/pypi/WMI)
 * [Open Hardware Monitor](http://openhardwaremonitor.org/) (Only required for CPU temperature monitoring)
 
 ## Getting started
-Download/clone the repository, and install all dependencies listed above.
+Download/clone the repository, and install all dependencies in `requirements.txt` or `environment.yml` (conda).
 From there, simply run 'main.pyw' using pythonw to suppress the command line. The tray icon should appear.
 Double clicking the tray icon will open the main GUI, where all options can be changed.
 
