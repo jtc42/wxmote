@@ -87,8 +87,12 @@ class WorkThread:
     def __init__(self):
         self._running = False
 
-        # TODO: Monitor data to named dictionary
-        self.monitor_data = [0, 0, 0, 0] 
+        self.monitor_data = {
+            'CPU Package/Temperature': 0.,
+            'CPU Total/Load': 0.,
+            'Memory/Load': 0.,
+            'Storage/Load': 0.,
+        }   
 
         self.event_system = threading.Event() #Event flag for first system info call
         self.event_cinema = threading.Event() #Event flag for first cinema info call
@@ -118,7 +122,7 @@ class WorkThread:
         
             if PREFS['mode'] == 'system': #If in system mode
                 if PREFS['monitor_load'] or PREFS['monitor_temp']:  # If monitoring either load or temperature
-                    self.monitor_data = sysinfo.getVals()
+                    self.monitor_data = sysinfo.get_status()
                 
                 #Set flag for first acquisition
                 if not self.event_system.is_set():
@@ -154,14 +158,15 @@ class DrawThread:
         # Initial CPU load
         self.monitor_old = self.attached_worker.monitor_data 
         # Initial pulse speed
-        self.pulse_speed = 0.042*self.attached_worker.monitor_data[1] + 1.8
+        self.pulse_speed = self.load2speed(self.attached_worker.monitor_data['CPU Total/Load'])
         # Array to store cinema data used in time averaging
         self.cinema_timeavg = []
         # Event for thread ending (used for program exit)
         self.event_finished = threading.Event()
     
     
-    # SYSTEM MONITOR FUNCTIONS
+    ## SYSTEM MONITOR FUNCTIONS
+
     # Convert system temperature into RGB array, from MAP
     def temp2rgbs(self, temp):
         global PREFS, MAPS
@@ -180,11 +185,19 @@ class DrawThread:
         return p[grad_id]
     
 
+    # Convert a CPU load (pc) into a breathing pulse speed
+    def load2speed(self, load):
+        return 0.042 * load + 1.8 
+    
+
     # Draw a single shot in CPU pulse mode
     def drawshotCPUPulse(self): 
-        if self.monitor_old[1] != self.attached_worker.monitor_data[1]:  # If load has changed
-            self.pulse_speed = 0.042*self.attached_worker.monitor_data[1] + 1.8  # Recalculate pulse speed
-            self.monitor_old = self.attached_worker.monitor_data  # Update 'monitorold' for future comparisons
+         # If load has changed
+        if self.monitor_old['CPU Total/Load'] != self.attached_worker.monitor_data['CPU Total/Load']: 
+            # Recalculate pulse speed
+            self.pulse_speed = self.load2speed(self.attached_worker.monitor_data['CPU Total/Load'])
+            # Update 'monitorold' for future comparisons
+            self.monitor_old = self.attached_worker.monitor_data  
            
         motecore.pulseShot(self.rgbs_old, self.rgbs, base=0.7, speed=self.pulse_speed)  # Draw a pulse cycle
         self.rgbs_old=self.rgbs  # Update 'rgbold' for future comparisons
@@ -196,7 +209,7 @@ class DrawThread:
         self.rgbs_old=self.rgbs  # Update 'rgbold' for future comparisons
     
 
-    ##THREAD FUNCTIONS    
+    ## THREAD FUNCTIONS    
     
     def stop(self): #Stop and clear
         print("Draw thread stop initiated.")
@@ -222,7 +235,7 @@ class DrawThread:
                 ## Update colours
                 if PREFS['monitor_temp']: #If colour based on CPU temperature
                     # Set local colour to calculated from global temperature
-                    self.rgbs = self.temp2rgbs(self.attached_worker.monitor_data[0]) 
+                    self.rgbs = self.temp2rgbs(self.attached_worker.monitor_data['CPU Package/Temperature']) 
                 else:
                     self.rgbs = [PREFS['user_rgb']] * sum(PREFS['led_layout'])  # Set local colour to global user-defined values
                 
@@ -243,7 +256,7 @@ class DrawThread:
                 # Wait for first acquisition on worker thread, by listening for flag
                 self.attached_worker.event_cinema.wait() 
 
-                # Lock at 120fps ish
+                # 120fps ish
                 time.sleep(1.0/240)
 
                 self.cinema_timeavg.insert(0, self.attached_worker.cinema_colour_data)
@@ -251,25 +264,24 @@ class DrawThread:
                 if len(self.cinema_timeavg) >= PREFS['cinema_averages']:
                     del self.cinema_timeavg[-1]
                     
-                
                 #Draw to Mote
                 for px in range(sum(PREFS['led_layout'])):
-
-                    #rgb = [np.mean([frame[px][i] for frame in self.cinema_timeavg]) for i in range(3)]
-
+                    # Get initial RGB array from time-averaging
                     rgb = np.mean([frame[px] for frame in self.cinema_timeavg], axis=0)
-
+                    # Apply colour correction
                     rgb = np.multiply(rgb, PREFS['cinema_correction'])
+                    # Apply total brightness
                     rgb = np.multiply(rgb, PREFS['cinema_brightness'])
+                    # Apply contrast
                     rgb = contrast.apply_contrast(rgb, PREFS['cinema_contrast'])
 
+                    # Smart-set based on pixel number
                     motecore.smart_set(px, rgb)
                 
                 motecore.mote.show()    
                 
         self.event_finished.set()
         print("Worker thread (draw) main loop exited.")
-
 
 
 ###TASKBAR ICON###
@@ -322,11 +334,9 @@ class TaskBarIcon(adv.TaskBarIcon):
 
 
 
-###MAIN WINDOW###
+### MAIN WINDOW ###
 
 class MyFrame(gui.MainFrame): #Instance of MainFrame class from 'gui'
-    ###SETUP###
-
     def __init__(self, parent): 
         global PREFS, MAPS
         #Initialize from 'gui' MainFrame
@@ -366,9 +376,8 @@ class MyFrame(gui.MainFrame): #Instance of MainFrame class from 'gui'
         
         
         
-    ###BINDING FUNCTIONS###
-    # TODO: Change all global variables to global PREFS dictionary
-        
+    ### BINDING FUNCTIONS ###
+
     #On about binding show About dialog
     def OnAbout(self,e): 
         global VersionID
@@ -459,9 +468,7 @@ class MyFrame(gui.MainFrame): #Instance of MainFrame class from 'gui'
         self.Destroy()
         
 
-
 ###APP SETUP###
-
 class App(wx.App):
     def OnInit(self):
         frame = MyFrame(None)
