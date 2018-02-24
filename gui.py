@@ -19,16 +19,16 @@ class MainFrame ( wx.Frame ):
 	def __init__( self, parent ):
 		wx.Frame.__init__ ( self, parent, id = wx.ID_ANY, title = u"Mote PC Controller", pos = wx.DefaultPosition, size = wx.Size( 300,400 ), style = wx.CAPTION|wx.CLOSE_BOX|wx.MINIMIZE|wx.MINIMIZE_BOX|wx.SYSTEM_MENU|wx.TAB_TRAVERSAL )
 		
-		self.SetSizeHintsSz( wx.DefaultSize, wx.DefaultSize )
+		self.SetSizeHints( wx.DefaultSize, wx.DefaultSize )
 		self.SetBackgroundColour( wx.SystemSettings.GetColour( wx.SYS_COLOUR_3DLIGHT ) )
 		
 		self.menu = wx.MenuBar( 0 )
 		self.filemenu = wx.Menu()
 		self.menuAbout = wx.MenuItem( self.filemenu, wx.ID_ABOUT, u"About", wx.EmptyString, wx.ITEM_NORMAL )
-		self.filemenu.AppendItem( self.menuAbout )
+		self.filemenu.Append( self.menuAbout )
 		
 		self.menuExit = wx.MenuItem( self.filemenu, wx.ID_EXIT, u"Exit", wx.EmptyString, wx.ITEM_NORMAL )
-		self.filemenu.AppendItem( self.menuExit )
+		self.filemenu.Append( self.menuExit )
 		
 		self.menu.Append( self.filemenu, u"File" ) 
 		
@@ -52,7 +52,7 @@ class MainFrame ( wx.Frame ):
 		sizerSystem.Add( self.pickerBaseColour, 0, wx.ALL|wx.EXPAND, 5 )
 		
 		self.checkMonitorTemp = wx.CheckBox( self.panelSystem, wx.ID_ANY, u"Set colour based on CPU temperature", wx.DefaultPosition, wx.DefaultSize, 0 )
-		self.checkMonitorTemp.SetToolTipString( u"Requires 'Open Hardware Monitor' to be running" )
+		self.checkMonitorTemp.SetToolTip( u"Requires 'Open Hardware Monitor' to be running" )
 		
 		sizerSystem.Add( self.checkMonitorTemp, 0, wx.ALL, 5 )
 		
