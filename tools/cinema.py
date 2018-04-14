@@ -156,15 +156,5 @@ def get_channels(img, led_layout):
 if __name__ == "__main__":
     for i in range(50):  # Loop 100 times for profiling
         led_layout = [16, 32, 16]  # Left, top, right
-        img = get_screen(hwnd, mode='pil')
-        colours = get_channels(img, led_layout)
-
-    for i in range(50):  # Loop 100 times for profiling
-        led_layout = [16, 32, 16]  # Left, top, right
-        img = get_screen(hwnd, mode='mss')
-        colours = get_channels(img, led_layout)
-
-    for i in range(50):  # Loop 100 times for profiling
-        led_layout = [16, 32, 16]  # Left, top, right
-        img = get_screen(hwnd, mode='win32')
+        img = get_screen(hwnd)
         colours = get_channels(img, led_layout)

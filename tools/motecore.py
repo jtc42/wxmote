@@ -17,6 +17,7 @@ N = 64
 
 # CORE SETTINGS #
 display_mode = True
+flip = False
 
 
 # CORE FUNCTIONS #
@@ -42,6 +43,7 @@ clearAll()
 # START SET PIXEL # 
 def smart_set(pixel, rgb):
     global display_mode
+    global flip
     # Natural position with no modifiers
     ch = pixel//16 + 1
     px = pixel % 16
@@ -52,6 +54,9 @@ def smart_set(pixel, rgb):
     if display_mode:
         if ch == 3 or ch == 4:  # If top right or right sticks
             px = 15-px  # Flip pixels due to bar orientation
+
+    if flip:
+        px = 15-px  # Flip pixels due to bar orientation
 
     # Send to mote
     mote.set_pixel(ch, px, *rgb)

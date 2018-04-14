@@ -21,6 +21,11 @@ from tools import motecore
 from tools import sysinfo
 from tools import contrast
 
+BAR_ARRANGEMENT = False
+if BAR_ARRANGEMENT:
+    motecore.display_mode = False
+    motecore.flip = True
+
 
 MODES = ['system', 'rainbow', 'cinema']
 
@@ -202,7 +207,7 @@ class DrawThread:
             # Update 'monitorold' for future comparisons
             self.monitor_old = self.attached_worker.monitor_data
    
-        motecore.pulseShot(self.rgbs_old, self.rgbs, base=0.7, speed=self.pulse_speed)  # Draw a pulse cycle
+        motecore.pulseShot(self.rgbs_old, self.rgbs, base=0.2, speed=self.pulse_speed)  # Draw a pulse cycle
         self.rgbs_old = self.rgbs  # Update 'rgbold' for future comparisons
 
     # Draw a single shot of static colour (ie includes fades when RGB is changed)
@@ -334,7 +339,7 @@ class TaskBarIcon(adv.TaskBarIcon):
 # Instance of MainFrame class from 'gui'
 class MyFrame(gui.MainFrame):  
     def __init__(self, parent): 
-        global PREFS, MAPS
+        global PREFS, MAPS, BAR_ARRANGEMENT
         # Initialize from 'gui' MainFrame
         gui.MainFrame.__init__(self, parent)
         # Create taskbar icon
@@ -367,6 +372,13 @@ class MyFrame(gui.MainFrame):
         # SET CINEMA UI VALUES
         self.sliderContrast.SetValue(int(10*PREFS['cinema_contrast']))
         self.sliderBrightness.SetValue(int(100*PREFS['cinema_brightness']))
+
+        # HIDE CINEMA MODE IF IN BAR ARRANGEMENT
+        if BAR_ARRANGEMENT:
+            self.notebookMain.RemovePage(2)
+            self.panelCinema.Hide()
+            self.panelCinema.Disable()
+            
 
     # BINDING FUNCTIONS
 
@@ -468,13 +480,12 @@ class App(wx.App):
 workthread = WorkThread()
 drawthread = DrawThread(workthread)
 
-
 def main():
     app = App(False)
+
     workthread.start()
     drawthread.start() 
     app.MainLoop()
-
 
 if __name__ == '__main__':
     main()

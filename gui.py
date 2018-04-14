@@ -16,7 +16,7 @@ import wx.xrc
 
 class MainFrame ( wx.Frame ):
 	
-	def __init__( self, parent ):
+	def __init__( self, parent):
 		wx.Frame.__init__ ( self, parent, id = wx.ID_ANY, title = u"Mote PC Controller", pos = wx.DefaultPosition, size = wx.Size( 300,400 ), style = wx.CAPTION|wx.CLOSE_BOX|wx.MINIMIZE|wx.MINIMIZE_BOX|wx.SYSTEM_MENU|wx.TAB_TRAVERSAL )
 		
 		self.SetSizeHints( wx.DefaultSize, wx.DefaultSize )
