@@ -26,6 +26,8 @@ if BAR_ARRANGEMENT:
     motecore.display_mode = False
     motecore.flip = True
 
+motecore.flip_all = True
+
 
 MODES = ['system', 'rainbow', 'cinema']
 
@@ -207,7 +209,7 @@ class DrawThread:
             # Update 'monitorold' for future comparisons
             self.monitor_old = self.attached_worker.monitor_data
    
-        motecore.pulseShot(self.rgbs_old, self.rgbs, base=0.2, speed=self.pulse_speed)  # Draw a pulse cycle
+        motecore.pulseShot(self.rgbs_old, self.rgbs, base=0.6, speed=self.pulse_speed)  # Draw a pulse cycle
         self.rgbs_old = self.rgbs  # Update 'rgbold' for future comparisons
 
     # Draw a single shot of static colour (ie includes fades when RGB is changed)

@@ -18,6 +18,7 @@ N = 64
 # CORE SETTINGS #
 display_mode = True
 flip = False
+flip_all = False
 
 
 # CORE FUNCTIONS #
@@ -42,8 +43,11 @@ clearAll()
 
 # START SET PIXEL # 
 def smart_set(pixel, rgb):
-    global display_mode
-    global flip
+    global display_mode, flip, flip_all, N
+	
+    if flip_all:
+        pixel = (N-1) - pixel
+	
     # Natural position with no modifiers
     ch = pixel//16 + 1
     px = pixel % 16
